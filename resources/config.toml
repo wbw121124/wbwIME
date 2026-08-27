@@ -1,0 +1,22 @@
+[dict]
+base_path = "resources/dicts/base.cin"
+ngram_path = "resources/dicts/ngram.bin"
+
+[matcher]
+fuzzy = true
+fuzzy_rules = ["z->zh", "c->ch", "s->sh", "n->l", "l->n"]
+
+[rank]
+pin_weight = 100.0
+user_weight = 10.0
+freq_weight = 1.0
+ngram_weight = 0.5
+max_candidates = 10
+
+[l0]
+threshold = 3
+snapshot_path = "wbw_l0.json"
+
+[ngram]
+order = 2
+smooth = 0.1

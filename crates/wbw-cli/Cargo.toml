@@ -1,0 +1,20 @@
+[package]
+name = "wbw-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "wbwime"
+path = "src/main.rs"
+
+[dependencies]
+wbw-types = { path = "../wbw-types" }
+wbw-core = { path = "../wbw-core" }
+wbw-dict = { path = "../wbw-dict" }
+wbw-matcher = { path = "../wbw-matcher" }
+wbw-rank = { path = "../wbw-rank" }
+wbw-ngram = { path = "../wbw-ngram" }
+anyhow.workspace = true
+thiserror.workspace = true

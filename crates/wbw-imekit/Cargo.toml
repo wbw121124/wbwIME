@@ -1,0 +1,13 @@
+[package]
+name = "wbw-imekit"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+wbw-types = { path = "../wbw-types" }
+wbw-core = { path = "../wbw-core" }
+imekit.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true

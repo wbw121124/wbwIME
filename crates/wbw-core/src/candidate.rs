@@ -1,0 +1,245 @@
+//! 候选数据结构模块
+
+use std::fmt;
+use serde::{Deserialize, Serialize};
+use wbw_types::{Candidate, CandidateSource, ImeResult};
+
+/// 候选词列表
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CandidateList {
+    /// 候选词
+    pub candidates: Vec<Candidate>,
+    /// 当前页码
+    pub page: usize,
+    /// 每页数量
+    pub page_size: usize,
+    /// 总数量
+    pub total: usize,
+    /// 是否有下一页
+    pub has_next: bool,
+    /// 是否有上一页
+    pub has_prev: bool,
+}
+
+impl CandidateList {
+    /// 创建新的候选词列表
+    pub fn new(candidates: Vec<Candidate>, page: usize, page_size: usize) -> Self {
+        let total = candidates.len();
+        let has_next = (page + 1) * page_size < total;
+        let has_prev = page > 0;
+        
+        Self {
+            candidates,
+            page,
+            page_size,
+            total,
+            has_next,
+            has_prev,
+        }
+    }
+
+    /// 获取当前页候选词
+    pub fn current_page(&self) -> &[Candidate] {
+        let start = self.page * self.page_size;
+        let end = std::cmp::min(start + self.page_size, self.candidates.len());
+        &self.candidates[start..end]
+    }
+
+    /// 获取所有候选词
+    pub fn all_candidates(&self) -> &[Candidate] {
+        &self.candidates
+    }
+
+    /// 获取候选词数量
+    pub fn len(&self) -> usize {
+        self.candidates.len()
+    }
+
+    /// 检查是否为空
+    pub fn is_empty(&self) -> bool {
+        self.candidates.is_empty()
+    }
+
+    /// 翻到下一页
+    pub fn next_page(&mut self) -> bool {
+        if self.has_next {
+            self.page += 1;
+            self.has_prev = true;
+            self.has_next = (self.page + 1) * self.page_size < self.total;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 翻到上一页
+    pub fn prev_page(&mut self) -> bool {
+        if self.has_prev {
+            self.page -= 1;
+            self.has_next = true;
+            self.has_prev = self.page > 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 跳转到指定页
+    pub fn goto_page(&mut self, page: usize) -> bool {
+        if page * self.page_size < self.total {
+            self.page = page;
+            self.has_next = (page + 1) * self.page_size < self.total;
+            self.has_prev = page > 0;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// 候选词选择器
+pub struct CandidateSelector {
+    /// 候选词列表
+    list: CandidateList,
+    /// 当前选中索引
+    selected: usize,
+    /// 是否自动确认
+    auto_confirm: bool,
+    /// 自动确认阈值
+    auto_confirm_threshold: f64,
+}
+
+impl CandidateSelector {
+    /// 创建新的选择器
+    pub fn new(list: CandidateList) -> Self {
+        Self {
+            list,
+            selected: 0,
+            auto_confirm: false,
+            auto_confirm_threshold: 0.8,
+        }
+    }
+
+    /// 设置自动确认
+    pub fn with_auto_confirm(mut self, enable: bool, threshold: f64) -> Self {
+        self.auto_confirm = enable;
+        self.auto_confirm_threshold = threshold;
+        self
+    }
+
+    /// 获取当前选中的候选词
+    pub fn selected(&self) -> Option<&Candidate> {
+        self.list.current_page().get(self.selected)
+    }
+
+    /// 选择下一个
+    pub fn select_next(&mut self) -> bool {
+        let page_candidates = self.list.current_page();
+        if self.selected + 1 < page_candidates.len() {
+            self.selected += 1;
+            true
+        } else if self.list.next_page() {
+            self.selected = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 选择上一个
+    pub fn select_prev(&mut self) -> bool {
+        if self.selected > 0 {
+            self.selected -= 1;
+            true
+        } else if self.list.prev_page() {
+            self.selected = self.list.current_page().len().saturating_sub(1);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 选择指定索引
+    pub fn select(&mut self, index: usize) -> bool {
+        if index < self.list.current_page().len() {
+            self.selected = index;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 确认选择
+    pub fn confirm(&self) -> Option<&Candidate> {
+        self.selected()
+    }
+
+    /// 检查是否应该自动确认
+    pub fn should_auto_confirm(&self) -> bool {
+        if let Some(candidate) = self.selected() {
+            self.auto_confirm && candidate.score >= self.auto_confirm_threshold
+        } else {
+            false
+        }
+    }
+
+    /// 获取列表引用
+    pub fn list(&self) -> &CandidateList {
+        &self.list
+    }
+
+    /// 获取当前选中索引
+    pub fn selected_index(&self) -> usize {
+        self.selected
+    }
+}
+
+/// 候选词过滤器
+pub struct CandidateFilter;
+
+impl CandidateFilter {
+    /// 按来源过滤
+    pub fn by_source(candidates: &[Candidate], source: CandidateSource) -> Vec<&Candidate> {
+        candidates.iter().filter(|c| c.source == source).collect()
+    }
+
+    /// 按分数过滤
+    pub fn by_min_score(candidates: &[Candidate], min_score: f64) -> Vec<&Candidate> {
+        candidates.iter().filter(|c| c.score >= min_score).collect()
+    }
+
+    /// 按最大数量过滤
+    pub fn limit(candidates: &[Candidate], max_count: usize) -> Vec<&Candidate> {
+        candidates.iter().take(max_count).collect()
+    }
+
+    /// 去重
+    pub fn deduplicate(candidates: &mut Vec<Candidate>) {
+        candidates.dedup_by(|a, b| a.text == b.text && a.code == b.code);
+    }
+
+    /// 排序（按分数降序）
+    pub fn sort_by_score(candidates: &mut Vec<Candidate>) {
+        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    }
+}
+
+/// 候选词转换器
+pub struct CandidateConverter;
+
+impl CandidateConverter {
+    /// 转换为文本列表
+    pub fn to_texts(candidates: &[Candidate]) -> Vec<String> {
+        candidates.iter().map(|c| c.text.clone()).collect()
+    }
+
+    /// 转换为编码-文本映射
+    pub fn to_code_text_map(candidates: &[Candidate]) -> Vec<(String, String)> {
+        candidates.iter().map(|c| (c.code.clone(), c.text.clone())).collect()
+    }
+
+    /// 转换为分数映射
+    pub fn to_score_map(candidates: &[Candidate]) -> Vec<(String, f64)> {
+        candidates.iter().map(|c| (c.text.clone(), c.score)).collect()
+    }
+}

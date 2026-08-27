@@ -1,0 +1,14 @@
+[package]
+name = "wbw-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+wbw-types = { path = "../wbw-types" }
+wbw-dict = { path = "../wbw-dict" }
+wbw-matcher = { path = "../wbw-matcher" }
+serde.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
