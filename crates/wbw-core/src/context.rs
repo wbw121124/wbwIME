@@ -238,3 +238,52 @@ impl ContextSnapshot {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_context_push_char() {
+        let mut ctx = ContextManager::new(1);
+        ctx.push_char('a');
+        ctx.push_char('b');
+        assert_eq!(ctx.buffer(), "ab");
+    }
+
+    #[test]
+    fn test_context_pop_char() {
+        let mut ctx = ContextManager::new(1);
+        ctx.push_char('a');
+        ctx.push_char('b');
+        ctx.pop_char();
+        assert_eq!(ctx.buffer(), "a");
+    }
+
+    #[test]
+    fn test_context_clear_buffer() {
+        let mut ctx = ContextManager::new(1);
+        ctx.push_char('a');
+        ctx.clear_buffer();
+        assert!(ctx.is_buffer_empty());
+    }
+
+    #[test]
+    fn test_context_undo() {
+        let mut ctx = ContextManager::new(1);
+        ctx.push_char('a');
+        ctx.push_char('b');
+        assert!(ctx.undo());
+        assert_eq!(ctx.buffer(), "a");
+    }
+
+    #[test]
+    fn test_context_snapshot() {
+        let mut ctx = ContextManager::new(1);
+        ctx.push_char('a');
+        let snapshot = ContextSnapshot::from(ctx.current());
+        assert_eq!(snapshot.buffer, "a");
+        let restored = snapshot.to_input_context(1);
+        assert_eq!(restored.buffer, "a");
+    }
+}

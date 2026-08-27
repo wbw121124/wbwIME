@@ -243,3 +243,65 @@ impl CandidateConverter {
         candidates.iter().map(|c| (c.text.clone(), c.score)).collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_candidates() -> Vec<Candidate> {
+        vec![
+            Candidate {
+                text: "中国".into(),
+                code: "zhongguo".into(),
+                score: 100.0,
+                source: CandidateSource::System,
+                ngram_score: None,
+                user_weight: None,
+            },
+            Candidate {
+                text: "终于".into(),
+                code: "zhongyu".into(),
+                score: 50.0,
+                source: CandidateSource::System,
+                ngram_score: None,
+                user_weight: None,
+            },
+        ]
+    }
+
+    #[test]
+    fn test_candidate_list_pagination() {
+        let candidates = test_candidates();
+        let mut list = CandidateList::new(candidates, 0, 10);
+        assert_eq!(list.len(), 2);
+        assert!(!list.has_next);
+        assert!(!list.has_prev);
+    }
+
+    #[test]
+    fn test_candidate_selector() {
+        let candidates = test_candidates();
+        let list = CandidateList::new(candidates, 0, 10);
+        let mut selector = CandidateSelector::new(list);
+        assert!(selector.select_next());
+        assert!(selector.selected().is_some());
+    }
+
+    #[test]
+    fn test_candidate_filter() {
+        let candidates = test_candidates();
+        let filtered = CandidateFilter::by_min_score(&candidates, 60.0);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].text, "中国");
+    }
+
+    #[test]
+    fn test_candidate_deduplicate() {
+        let mut candidates = test_candidates();
+        // 插入一个连续的重复项
+        candidates.insert(1, candidates[0].clone());
+        assert_eq!(candidates.len(), 3);
+        CandidateFilter::deduplicate(&mut candidates);
+        assert_eq!(candidates.len(), 2);
+    }
+}
