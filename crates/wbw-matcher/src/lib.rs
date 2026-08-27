@@ -4,7 +4,7 @@ pub mod pinyin;
 pub mod matcher;
 
 // 重新导出常用类型
-pub use fuzzy::{FuzzyRule, FuzzyConfig, FuzzyMatcher, FuzzyMatchResult, FuzzyMatch, FuzzyRulePresets};
+pub use fuzzy::{FuzzyRule, FuzzyConfig, FuzzyMatcher, FuzzyMatchResult, FuzzyRulePresets};
 pub use segmenter::{Segment, Segmenter, SegmentStats};
 pub use pinyin::{PinyinSyllable, PinyinString, ToneMarker, PinyinValidator};
 pub use matcher::{Matcher, MatcherConfig, MatchStrategy, MatchOptions, MatchStats};

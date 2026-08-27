@@ -1,30 +1,17 @@
 //! 模糊匹配模块
+//!
+//! 提供基于规则的拼音模糊匹配，支持声母替换、韵母混淆等。
 
-use std::fmt;
-use thiserror::Error;
-use wbw_types::{ImeError, ImeResult};
-
-/// 模糊匹配错误类型
-#[derive(Error, Debug)]
-pub enum FuzzyError {
-    #[error("模糊规则无效: {0}")]
-    InvalidRule(String),
-    
-    #[error("匹配失败: {0}")]
-    MatchError(String),
-    
-    #[error("配置错误: {0}")]
-    ConfigError(String),
-}
+use std::collections::HashMap;
 
 /// 模糊匹配规则
 #[derive(Debug, Clone)]
 pub struct FuzzyRule {
     /// 规则名称
     pub name: String,
-    /// 源字符
+    /// 源字符/音素
     pub from: String,
-    /// 目标字符
+    /// 目标字符/音素
     pub to: String,
     /// 是否启用
     pub enabled: bool,
@@ -49,32 +36,10 @@ impl FuzzyRule {
         self.priority = priority;
         self
     }
-
-    /// 禁用规则
-    pub fn disable(&mut self) {
-        self.enabled = false;
-    }
-
-    /// 启用规则
-    pub fn enable(&mut self) {
-        self.enabled = true;
-    }
-
-    /// 检查是否匹配
-    pub fn matches(&self, input: &str) -> bool {
-        // TODO: 实现匹配逻辑
-        todo!("实现模糊规则匹配")
-    }
-
-    /// 应用规则
-    pub fn apply(&self, input: &str) -> ImeResult<String> {
-        // TODO: 实现规则应用逻辑
-        todo!("实现模糊规则应用")
-    }
 }
 
-impl fmt::Display for FuzzyRule {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for FuzzyRule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {} -> {}", self.name, self.from, self.to)
     }
 }
@@ -88,30 +53,30 @@ pub struct FuzzyConfig {
     pub rules: Vec<FuzzyRule>,
     /// 最大编辑距离
     pub max_edit_distance: usize,
-    /// 是否区分大小写
-    pub case_sensitive: bool,
-    /// 是否启用声调匹配
-    pub tone_matching: bool,
 }
 
 impl Default for FuzzyConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            rules: Vec::new(),
+            rules: Self::default_pinyin_rules(),
             max_edit_distance: 1,
-            case_sensitive: false,
-            tone_matching: false,
         }
+    }
+}
+
+impl FuzzyConfig {
+    /// 默认拼音模糊规则
+    fn default_pinyin_rules() -> Vec<FuzzyRule> {
+        FuzzyRulePresets::all_rules()
     }
 }
 
 /// 模糊匹配器
 pub struct FuzzyMatcher {
-    /// 配置
     config: FuzzyConfig,
-    /// 预处理的规则映射
-    rule_map: std::collections::HashMap<String, Vec<FuzzyRule>>,
+    /// from → [rules] 映射，用于快速查找
+    rule_map: HashMap<String, Vec<FuzzyRule>>,
 }
 
 impl FuzzyMatcher {
@@ -131,9 +96,14 @@ impl FuzzyMatcher {
         Self { config, rule_map }
     }
 
+    /// 使用默认拼音规则创建
+    pub fn pinyin_default() -> Self {
+        Self::new(FuzzyConfig::default())
+    }
+
     /// 构建规则映射
-    fn build_rule_map(rules: &[FuzzyRule]) -> std::collections::HashMap<String, Vec<FuzzyRule>> {
-        let mut map = std::collections::HashMap::new();
+    fn build_rule_map(rules: &[FuzzyRule]) -> HashMap<String, Vec<FuzzyRule>> {
+        let mut map = HashMap::new();
         for rule in rules {
             if rule.enabled {
                 map.entry(rule.from.clone())
@@ -144,22 +114,159 @@ impl FuzzyMatcher {
         map
     }
 
-    /// 生成所有可能的变体
+    /// 生成输入的所有模糊变体
+    ///
+    /// 对输入中的每个音素，根据规则生成所有可能的替换，
+    /// 然后组合所有可能的变体。
     pub fn generate_variants(&self, input: &str) -> Vec<String> {
-        // TODO: 实现变体生成逻辑
-        todo!("实现模糊变体生成")
+        if !self.config.enabled {
+            return vec![input.to_string()];
+        }
+
+        // 尝试在 input 中查找所有可替换的位置
+        let mut variants: Vec<String> = vec![input.to_string()];
+
+        // 收集所有可能的替换
+        let mut replacements: Vec<(usize, usize, Vec<String>)> = Vec::new(); // (start, end, [replacements])
+
+        for (from, rules) in &self.rule_map {
+            let from_len = from.len();
+            if from_len == 0 {
+                continue;
+            }
+            // 在 input 中查找 from 的所有出现位置
+            let mut search_pos = 0;
+            while search_pos <= input.len() {
+                if let Some(start) = input[search_pos..].find(from.as_str()) {
+                    let abs_start = search_pos + start;
+                    let abs_end = abs_start + from_len;
+                    let targets: Vec<String> = rules.iter().map(|r| r.to.clone()).collect();
+                    replacements.push((abs_start, abs_end, targets));
+                    search_pos = abs_start + 1;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // 按位置排序
+        replacements.sort_by_key(|&(start, _, _)| start);
+
+        // 去除重叠的替换
+        let mut filtered = Vec::new();
+        let mut last_end = 0;
+        for (start, end, targets) in replacements {
+            if start >= last_end {
+                filtered.push((start, end, targets));
+                last_end = end;
+            }
+        }
+
+        // 逐个应用替换，生成所有组合
+        for (start, end, targets) in filtered {
+            let mut new_variants = Vec::new();
+            for variant in &variants {
+                for target in &targets {
+                    let mut new_var = variant.clone();
+                    new_var.replace_range(start..end, target);
+                    new_variants.push(new_var);
+                }
+            }
+            variants.extend(new_variants);
+        }
+
+        // 去重
+        variants.sort();
+        variants.dedup();
+        variants
     }
 
-    /// 计算编辑距离
-    pub fn edit_distance(&self, s1: &str, s2: &str) -> usize {
-        // TODO: 实现编辑距离计算
-        todo!("实现编辑距离计算")
+    /// 计算编辑距离（Levenshtein 距离）
+    pub fn edit_distance(s1: &str, s2: &str) -> usize {
+        let s1: Vec<char> = s1.chars().collect();
+        let s2: Vec<char> = s2.chars().collect();
+        let m = s1.len();
+        let n = s2.len();
+
+        let mut dp = vec![vec![0usize; n + 1]; m + 1];
+
+        for i in 0..=m {
+            dp[i][0] = i;
+        }
+        for j in 0..=n {
+            dp[0][j] = j;
+        }
+
+        for i in 1..=m {
+            for j in 1..=n {
+                let cost = if s1[i - 1] == s2[j - 1] { 0 } else { 1 };
+                dp[i][j] = (dp[i - 1][j] + 1)
+                    .min(dp[i][j - 1] + 1)
+                    .min(dp[i - 1][j - 1] + cost);
+            }
+        }
+
+        dp[m][n]
     }
 
-    /// 检查是否匹配
+    /// 检查是否模糊匹配
+    ///
+    /// 判断 input 是否与 target 在编辑距离限制内匹配，
+    /// 或者 input 的某个变体与 target 相同。
     pub fn is_match(&self, input: &str, target: &str) -> bool {
-        // TODO: 实现匹配检查
-        todo!("实现模糊匹配检查")
+        if !self.config.enabled {
+            return input == target;
+        }
+
+        // 精确匹配
+        if input == target {
+            return true;
+        }
+
+        // 编辑距离匹配
+        let dist = Self::edit_distance(input, target);
+        if dist <= self.config.max_edit_distance {
+            return true;
+        }
+
+        // 规则变体匹配
+        let variants = self.generate_variants(input);
+        variants.iter().any(|v| v == target)
+    }
+
+    /// 对候选列表进行模糊匹配过滤
+    pub fn filter_candidates<T>(&self, input: &str, candidates: &[T], extract: impl Fn(&T) -> &str) -> Vec<(T, f64)>
+    where
+        T: Clone,
+    {
+        let mut results: Vec<(T, f64)> = Vec::new();
+
+        for candidate in candidates {
+            let target = extract(candidate);
+
+            if input == target {
+                // 精确匹配，最高分
+                results.push((candidate.clone(), 100.0));
+                continue;
+            }
+
+            // 规则变体匹配
+            let variants = self.generate_variants(input);
+            if variants.iter().any(|v| v == target) {
+                results.push((candidate.clone(), 80.0));
+                continue;
+            }
+
+            // 编辑距离匹配
+            let dist = Self::edit_distance(input, target);
+            if dist <= self.config.max_edit_distance {
+                let score = 60.0 - (dist as f64) * 20.0;
+                results.push((candidate.clone(), score));
+            }
+        }
+
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        results
     }
 
     /// 获取配置
@@ -178,50 +285,37 @@ impl FuzzyMatcher {
 pub struct FuzzyMatchResult {
     /// 原始输入
     pub input: String,
-    /// 匹配结果
-    pub matches: Vec<FuzzyMatch>,
+    /// 匹配的变体
+    pub variants: Vec<String>,
     /// 匹配耗时（毫秒）
     pub elapsed_ms: f64,
-}
-
-/// 单个模糊匹配
-#[derive(Debug, Clone)]
-pub struct FuzzyMatch {
-    /// 匹配的文本
-    pub text: String,
-    /// 匹配分数
-    pub score: f64,
-    /// 使用的规则
-    pub rule: Option<FuzzyRule>,
-    /// 编辑距离
-    pub edit_distance: usize,
 }
 
 /// 预定义的模糊规则集合
 pub struct FuzzyRulePresets;
 
 impl FuzzyRulePresets {
-    /// 获取拼音模糊规则
+    /// 获取拼音声母模糊规则
     pub fn pinyin_rules() -> Vec<FuzzyRule> {
         vec![
-            FuzzyRule::new("z-zh".to_string(), "z".to_string(), "zh".to_string()),
-            FuzzyRule::new("c-ch".to_string(), "c".to_string(), "ch".to_string()),
-            FuzzyRule::new("s-sh".to_string(), "s".to_string(), "sh".to_string()),
-            FuzzyRule::new("n-l".to_string(), "n".to_string(), "l".to_string()),
-            FuzzyRule::new("l-n".to_string(), "l".to_string(), "n".to_string()),
-            FuzzyRule::new("r-l".to_string(), "r".to_string(), "l".to_string()),
-            FuzzyRule::new("an-ang".to_string(), "an".to_string(), "ang".to_string()),
-            FuzzyRule::new("en-eng".to_string(), "en".to_string(), "eng".to_string()),
-            FuzzyRule::new("in-ing".to_string(), "in".to_string(), "ing".to_string()),
+            FuzzyRule::new("z-zh".into(), "z".into(), "zh".into()),
+            FuzzyRule::new("c-ch".into(), "c".into(), "ch".into()),
+            FuzzyRule::new("s-sh".into(), "s".into(), "sh".into()),
+            FuzzyRule::new("n-l".into(), "n".into(), "l".into()),
+            FuzzyRule::new("l-n".into(), "l".into(), "n".into()),
+            FuzzyRule::new("r-l".into(), "r".into(), "l".into()),
+            FuzzyRule::new("an-ang".into(), "an".into(), "ang".into()),
+            FuzzyRule::new("en-eng".into(), "en".into(), "eng".into()),
+            FuzzyRule::new("in-ing".into(), "in".into(), "ing".into()),
         ]
     }
 
     /// 获取常见拼写错误规则
     pub fn typo_rules() -> Vec<FuzzyRule> {
         vec![
-            FuzzyRule::new("ei-ie".to_string(), "ei".to_string(), "ie".to_string()),
-            FuzzyRule::new("ui-iu".to_string(), "ui".to_string(), "iu".to_string()),
-            FuzzyRule::new("un-ün".to_string(), "un".to_string(), "ün".to_string()),
+            FuzzyRule::new("ei-ie".into(), "ei".into(), "ie".into()),
+            FuzzyRule::new("ui-iu".into(), "ui".into(), "iu".into()),
+            FuzzyRule::new("un-ün".into(), "un".into(), "ün".into()),
         ]
     }
 
@@ -230,5 +324,78 @@ impl FuzzyRulePresets {
         let mut rules = Self::pinyin_rules();
         rules.extend(Self::typo_rules());
         rules
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_edit_distance() {
+        assert_eq!(FuzzyMatcher::edit_distance("", ""), 0);
+        assert_eq!(FuzzyMatcher::edit_distance("abc", "abc"), 0);
+        assert_eq!(FuzzyMatcher::edit_distance("abc", "ab"), 1);
+        assert_eq!(FuzzyMatcher::edit_distance("abc", "def"), 3);
+        assert_eq!(FuzzyMatcher::edit_distance("kitten", "sitting"), 3);
+    }
+
+    #[test]
+    fn test_generate_variants_simple() {
+        let matcher = FuzzyMatcher::pinyin_default();
+        let variants = matcher.generate_variants("zongguo");
+        // "z" 应该被替换为 "zh"，所以变体中应该包含 "zhongguo"
+        assert!(variants.contains(&"zhongguo".to_string()));
+    }
+
+    #[test]
+    fn test_generate_variants_disabled() {
+        let config = FuzzyConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        let matcher = FuzzyMatcher::new(config);
+        let variants = matcher.generate_variants("zongguo");
+        assert_eq!(variants, vec!["zongguo".to_string()]);
+    }
+
+    #[test]
+    fn test_is_match_exact() {
+        let matcher = FuzzyMatcher::pinyin_default();
+        assert!(matcher.is_match("wo", "wo"));
+    }
+
+    #[test]
+    fn test_is_match_fuzzy() {
+        let matcher = FuzzyMatcher::pinyin_default();
+        // "zongguo" 通过 z→zh 规则变为 "zhongguo"
+        assert!(matcher.is_match("zongguo", "zhongguo"));
+    }
+
+    #[test]
+    fn test_is_match_edit_distance() {
+        let config = FuzzyConfig {
+            max_edit_distance: 1,
+            ..Default::default()
+        };
+        let matcher = FuzzyMatcher::new(config);
+        assert!(matcher.is_match("wo", "wwo")); // 编辑距离 1
+        assert!(!matcher.is_match("wo", "www")); // 编辑距离 2
+    }
+
+    #[test]
+    fn test_filter_candidates() {
+        let matcher = FuzzyMatcher::pinyin_default();
+        let candidates = vec!["zhongguo", "zhongyu", "zhongyao"];
+        let results = matcher.filter_candidates("zongguo", &candidates, |s| s);
+        // "zongguo" 通过 z→zh 规则变为 "zhongguo"，应匹配
+        assert!(!results.is_empty());
+        assert_eq!(results[0].0, "zhongguo");
+    }
+
+    #[test]
+    fn test_pinyin_rules_count() {
+        let rules = FuzzyRulePresets::all_rules();
+        assert!(rules.len() >= 9); // 至少有声母规则
     }
 }
