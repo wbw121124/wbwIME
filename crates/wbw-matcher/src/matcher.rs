@@ -1,28 +1,14 @@
 //! 匹配器主体模块
+//!
+//! 组合词典查询、模糊匹配、分词，提供统一的输入匹配接口。
 
 use std::num::NonZeroUsize;
-use std::fmt;
-use thiserror::Error;
-use wbw_types::{Candidate, ImeError, ImeResult, MatchResult, InputContext};
+use std::time::Instant;
+use wbw_dict::entry::{DictEntry, DictSource};
+use wbw_dict::{CinParser, FstDict, FstDictBuilder};
+use wbw_types::{Candidate, CandidateSource, InputContext};
 use crate::fuzzy::{FuzzyConfig, FuzzyMatcher, FuzzyRule};
-use crate::pinyin::PinyinString;
 use crate::segmenter::Segmenter;
-
-/// 匹配器错误类型
-#[derive(Error, Debug)]
-pub enum MatcherError {
-    #[error("词典查询失败: {0}")]
-    DictError(String),
-    
-    #[error("拼音解析失败: {0}")]
-    PinyinError(String),
-    
-    #[error("分词失败: {0}")]
-    SegmentError(String),
-    
-    #[error("配置错误: {0}")]
-    ConfigError(String),
-}
 
 /// 匹配器配置
 #[derive(Debug, Clone)]
@@ -31,12 +17,8 @@ pub struct MatcherConfig {
     pub fuzzy_enabled: bool,
     /// 模糊匹配配置
     pub fuzzy_config: FuzzyConfig,
-    /// 是否启用分词
-    pub segment_enabled: bool,
     /// 最大候选词数量
     pub max_candidates: usize,
-    /// 最小匹配分数
-    pub min_score: f64,
     /// 是否启用缓存
     pub cache_enabled: bool,
     /// 缓存大小
@@ -48,9 +30,7 @@ impl Default for MatcherConfig {
         Self {
             fuzzy_enabled: true,
             fuzzy_config: FuzzyConfig::default(),
-            segment_enabled: true,
             max_candidates: 10,
-            min_score: 0.0,
             cache_enabled: true,
             cache_size: 1000,
         }
@@ -58,59 +38,203 @@ impl Default for MatcherConfig {
 }
 
 /// 匹配器
+///
+/// 核心匹配引擎，组合词典查询、模糊匹配，提供统一的输入匹配接口。
 pub struct Matcher {
-    /// 配置
     config: MatcherConfig,
-    /// 模糊匹配器
+    dict: Option<FstDict>,
     fuzzy_matcher: FuzzyMatcher,
-    /// 分词器
-    segmenter: Segmenter,
-    /// 匹配缓存
     cache: Option<lru::LruCache<String, Vec<Candidate>>>,
 }
 
 impl Matcher {
-    /// 创建新的匹配器
+    /// 创建空匹配器（未加载词典）
     pub fn new(config: MatcherConfig) -> Self {
         let fuzzy_matcher = FuzzyMatcher::new(config.fuzzy_config.clone());
-        let segmenter = Segmenter::new();
-        
         let cache = if config.cache_enabled {
             Some(lru::LruCache::new(NonZeroUsize::new(config.cache_size).unwrap()))
         } else {
             None
         };
-        
         Self {
             config,
+            dict: None,
             fuzzy_matcher,
-            segmenter,
             cache,
         }
     }
 
-    /// 匹配输入
-    pub fn match_input(&mut self, context: &InputContext) -> ImeResult<MatchResult> {
-        // TODO: 实现匹配逻辑
-        todo!("实现输入匹配")
+    /// 创建带词典的匹配器
+    pub fn with_dict(config: MatcherConfig, dict: FstDict) -> Self {
+        let fuzzy_matcher = FuzzyMatcher::new(config.fuzzy_config.clone());
+        let cache = if config.cache_enabled {
+            Some(lru::LruCache::new(NonZeroUsize::new(config.cache_size).unwrap()))
+        } else {
+            None
+        };
+        Self {
+            config,
+            dict: Some(dict),
+            fuzzy_matcher,
+            cache,
+        }
     }
 
-    /// 精确匹配
-    pub fn exact_match(&self, code: &str) -> ImeResult<Vec<Candidate>> {
-        // TODO: 实现精确匹配逻辑
-        todo!("实现精确匹配")
+    /// 从 .cin 文件加载词典
+    pub fn load_cin(&mut self, path: &str) {
+        let parser = CinParser::new(path);
+        if let Ok(cin_entries) = parser.parse() {
+            let mut builder = FstDictBuilder::new();
+            for cin_entry in &cin_entries {
+                for word_entry in &cin_entry.words {
+                    builder.add_entry(DictEntry {
+                        code: cin_entry.code.clone(),
+                        word: word_entry.word.clone(),
+                        freq: word_entry.freq,
+                        source: DictSource::Base,
+                    });
+                }
+            }
+            self.dict = Some(builder.build(DictSource::Base));
+        }
     }
 
-    /// 前缀匹配
-    pub fn prefix_match(&self, code: &str) -> ImeResult<Vec<Candidate>> {
-        // TODO: 实现前缀匹配逻辑
-        todo!("实现前缀匹配")
+    /// 加载词典
+    pub fn load_dict(&mut self, dict: FstDict) {
+        self.dict = Some(dict);
     }
 
-    /// 模糊匹配
-    pub fn fuzzy_match(&self, code: &str) -> ImeResult<Vec<Candidate>> {
-        // TODO: 实现模糊匹配逻辑
-        todo!("实现模糊匹配")
+    /// 匹配输入上下文
+    ///
+    /// 根据输入缓冲区返回候选词列表。
+    pub fn match_input(&mut self, context: &InputContext) -> Vec<Candidate> {
+        let code = &context.buffer;
+        if code.is_empty() {
+            return Vec::new();
+        }
+
+        // 检查缓存
+        if let Some(cache) = &mut self.cache {
+            if let Some(cached) = cache.get(code) {
+                return cached.clone();
+            }
+        }
+
+        let start = Instant::now();
+        let mut candidates = self.do_match(code);
+
+        // 截断到最大候选数
+        candidates.truncate(self.config.max_candidates);
+
+        // 缓存结果
+        if let Some(cache) = &mut self.cache {
+            cache.put(code.clone(), candidates.clone());
+        }
+
+        let _elapsed = start.elapsed().as_millis();
+        candidates
+    }
+
+    /// 执行匹配（内部逻辑）
+    fn do_match(&self, code: &str) -> Vec<Candidate> {
+        let mut candidates = Vec::new();
+
+        // 1. 精确匹配
+        let exact = self.exact_lookup(code);
+        candidates.extend(exact);
+
+        // 2. 前缀匹配
+        let prefix = self.prefix_lookup(code);
+        candidates.extend(prefix);
+
+        // 3. 模糊匹配（如果启用）
+        if self.config.fuzzy_enabled {
+            let fuzzy = self.fuzzy_lookup(code);
+            candidates.extend(fuzzy);
+        }
+
+        // 按分数降序排序
+        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        // 去重（保留第一个，即最高分的）
+        candidates.dedup_by(|a, b| a.text == b.text);
+        candidates
+    }
+
+    /// 精确匹配：查找与输入完全相同的编码
+    pub fn exact_lookup(&self, code: &str) -> Vec<Candidate> {
+        let dict = match &self.dict {
+            Some(d) => d,
+            None => return Vec::new(),
+        };
+
+        dict.lookup(code)
+            .into_iter()
+            .map(|entry| Candidate {
+                text: entry.word.clone(),
+                code: code.to_string(),
+                score: 100.0 + entry.freq as f64,
+                source: CandidateSource::System,
+                ngram_score: None,
+                user_weight: None,
+            })
+            .collect()
+    }
+
+    /// 前缀匹配：查找以输入为前缀的编码
+    pub fn prefix_lookup(&self, code: &str) -> Vec<Candidate> {
+        let dict = match &self.dict {
+            Some(d) => d,
+            None => return Vec::new(),
+        };
+
+        dict.prefix_lookup(code)
+            .into_iter()
+            .map(|entry| {
+                let score = if entry.code == code {
+                    90.0
+                } else {
+                    70.0 - (entry.code.len() as f64 - code.len() as f64) * 5.0
+                };
+                Candidate {
+                    text: entry.word.clone(),
+                    code: entry.code.clone(),
+                    score,
+                    source: CandidateSource::System,
+                    ngram_score: None,
+                    user_weight: None,
+                }
+            })
+            .collect()
+    }
+
+    /// 模糊匹配：通过变体生成和编辑距离查找
+    pub fn fuzzy_lookup(&self, code: &str) -> Vec<Candidate> {
+        let dict = match &self.dict {
+            Some(d) => d,
+            None => return Vec::new(),
+        };
+
+        let variants = self.fuzzy_matcher.generate_variants(code);
+        let mut candidates = Vec::new();
+
+        for variant in &variants {
+            if variant == code {
+                continue;
+            }
+            let entries = dict.lookup(variant);
+            for entry in entries {
+                candidates.push(Candidate {
+                    text: entry.word.clone(),
+                    code: variant.clone(),
+                    score: 50.0 + entry.freq as f64 * 0.1,
+                    source: CandidateSource::System,
+                    ngram_score: None,
+                    user_weight: None,
+                });
+            }
+        }
+
+        candidates
     }
 
     /// 清除缓存
@@ -125,127 +249,206 @@ impl Matcher {
         &self.config
     }
 
-    /// 获取缓存命中率
-    pub fn cache_hit_rate(&self) -> f64 {
-        // TODO: 实现缓存统计
-        todo!("实现缓存命中率统计")
+    /// 获取缓存大小
+    pub fn cache_len(&self) -> usize {
+        self.cache.as_ref().map_or(0, |c| c.len())
     }
 }
 
 /// 匹配策略
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchStrategy {
-    /// 精确匹配
     Exact,
-    /// 前缀匹配
     Prefix,
-    /// 后缀匹配
-    Suffix,
-    /// 包含匹配
-    Contains,
-    /// 模糊匹配
     Fuzzy,
-    /// 正则匹配
-    Regex,
 }
 
 /// 匹配选项
 #[derive(Debug, Clone)]
 pub struct MatchOptions {
-    /// 匹配策略
     pub strategy: MatchStrategy,
-    /// 是否区分大小写
-    pub case_sensitive: bool,
-    /// 是否启用模糊匹配
-    pub fuzzy_enabled: bool,
-    /// 最大编辑距离
-    pub max_edit_distance: usize,
-    /// 最大结果数量
     pub max_results: usize,
-    /// 最小匹配分数
-    pub min_score: f64,
 }
 
 impl Default for MatchOptions {
     fn default() -> Self {
         Self {
             strategy: MatchStrategy::Prefix,
-            case_sensitive: false,
-            fuzzy_enabled: true,
-            max_edit_distance: 1,
             max_results: 10,
-            min_score: 0.0,
         }
     }
-}
-
-/// 匹配结果统计
-#[derive(Debug, Clone, Default)]
-pub struct MatchStats {
-    /// 总匹配次数
-    pub total_matches: usize,
-    /// 平均匹配耗时（毫秒）
-    pub avg_time_ms: f64,
-    /// 最大匹配耗时（毫秒）
-    pub max_time_ms: f64,
-    /// 缓存命中次数
-    pub cache_hits: usize,
-    /// 缓存未命中次数
-    pub cache_misses: usize,
 }
 
 /// 匹配器构建器
 pub struct MatcherBuilder {
     config: MatcherConfig,
+    dict: Option<FstDict>,
 }
 
 impl MatcherBuilder {
-    /// 创建新的构建器
     pub fn new() -> Self {
         Self {
             config: MatcherConfig::default(),
+            dict: None,
         }
     }
 
-    /// 设置配置
     pub fn with_config(mut self, config: MatcherConfig) -> Self {
         self.config = config;
         self
     }
 
-    /// 启用模糊匹配
+    pub fn with_dict(mut self, dict: FstDict) -> Self {
+        self.dict = Some(dict);
+        self
+    }
+
     pub fn with_fuzzy(mut self, enabled: bool) -> Self {
         self.config.fuzzy_enabled = enabled;
         self
     }
 
-    /// 设置模糊规则
     pub fn with_fuzzy_rules(mut self, rules: Vec<FuzzyRule>) -> Self {
         self.config.fuzzy_config.rules = rules;
         self
     }
 
-    /// 设置最大候选词数量
     pub fn with_max_candidates(mut self, max: usize) -> Self {
         self.config.max_candidates = max;
         self
     }
 
-    /// 启用缓存
     pub fn with_cache(mut self, enabled: bool, size: usize) -> Self {
         self.config.cache_enabled = enabled;
         self.config.cache_size = size;
         self
     }
 
-    /// 构建匹配器
     pub fn build(self) -> Matcher {
-        Matcher::new(self.config)
+        match self.dict {
+            Some(dict) => Matcher::with_dict(self.config, dict),
+            None => Matcher::new(self.config),
+        }
     }
 }
 
 impl Default for MatcherBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build_test_dict() -> FstDict {
+        let mut builder = FstDictBuilder::new();
+        let entries = vec![
+            DictEntry { code: "wo".into(), word: "我".into(), freq: 100, source: DictSource::Base },
+            DictEntry { code: "wo".into(), word: "喔".into(), freq: 50, source: DictSource::Base },
+            DictEntry { code: "ai".into(), word: "爱".into(), freq: 200, source: DictSource::Base },
+            DictEntry { code: "ni".into(), word: "你".into(), freq: 150, source: DictSource::Base },
+            DictEntry { code: "zhongguo".into(), word: "中国".into(), freq: 300, source: DictSource::Base },
+            DictEntry { code: "zhongyu".into(), word: "中雨".into(), freq: 80, source: DictSource::Base },
+        ];
+        builder.add_entries(entries);
+        builder.build(DictSource::Base)
+    }
+
+    #[test]
+    fn test_exact_lookup() {
+        let dict = build_test_dict();
+        let matcher = Matcher::with_dict(MatcherConfig::default(), dict);
+        let results = matcher.exact_lookup("wo");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].text, "我");
+    }
+
+    #[test]
+    fn test_exact_lookup_miss() {
+        let dict = build_test_dict();
+        let matcher = Matcher::with_dict(MatcherConfig::default(), dict);
+        let results = matcher.exact_lookup("xyz");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_prefix_lookup() {
+        let dict = build_test_dict();
+        let matcher = Matcher::with_dict(MatcherConfig::default(), dict);
+        let results = matcher.prefix_lookup("zhong");
+        assert!(!results.is_empty());
+        let codes: Vec<&str> = results.iter().map(|c| c.code.as_str()).collect();
+        assert!(codes.contains(&"zhongguo"));
+        assert!(codes.contains(&"zhongyu"));
+    }
+
+    #[test]
+    fn test_fuzzy_lookup() {
+        let dict = build_test_dict();
+        let matcher = Matcher::with_dict(MatcherConfig::default(), dict);
+        let results = matcher.fuzzy_lookup("zongguo");
+        // z→zh 规则应生成 "zhongguo" 变体
+        assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_match_input() {
+        let dict = build_test_dict();
+        let mut matcher = Matcher::with_dict(MatcherConfig::default(), dict);
+        let context = InputContext {
+            buffer: "wo".to_string(),
+            cursor: 0,
+            mode: wbw_types::InputMode::Pinyin,
+            selected: Vec::new(),
+            session_id: 0,
+        };
+        let results = matcher.match_input(&context);
+        assert!(!results.is_empty());
+        assert_eq!(results[0].text, "我");
+    }
+
+    #[test]
+    fn test_match_input_empty() {
+        let dict = build_test_dict();
+        let mut matcher = Matcher::with_dict(MatcherConfig::default(), dict);
+        let context = InputContext {
+            buffer: String::new(),
+            cursor: 0,
+            mode: wbw_types::InputMode::Pinyin,
+            selected: Vec::new(),
+            session_id: 0,
+        };
+        let results = matcher.match_input(&context);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_cache() {
+        let dict = build_test_dict();
+        let mut matcher = Matcher::with_dict(MatcherConfig::default(), dict);
+        let context = InputContext {
+            buffer: "wo".to_string(),
+            cursor: 0,
+            mode: wbw_types::InputMode::Pinyin,
+            selected: Vec::new(),
+            session_id: 0,
+        };
+        let _ = matcher.match_input(&context);
+        assert_eq!(matcher.cache_len(), 1);
+        let _ = matcher.match_input(&context);
+        assert_eq!(matcher.cache_len(), 1);
+    }
+
+    #[test]
+    fn test_builder() {
+        let dict = build_test_dict();
+        let matcher = MatcherBuilder::new()
+            .with_dict(dict)
+            .with_max_candidates(5)
+            .with_cache(true, 100)
+            .build();
+        assert_eq!(matcher.config().max_candidates, 5);
     }
 }
