@@ -1,31 +1,19 @@
 //! N-gram 概率表模块
+//!
+//! 提供 N-gram 语言模型的概率存储和查询功能。
 
-use std::path::Path;
-use thiserror::Error;
-use wbw_types::{ImeError, ImeResult};
-
-/// N-gram 表错误类型
-#[derive(Error, Debug)]
-pub enum TableError {
-    #[error("表加载失败: {0}")]
-    LoadError(String),
-    
-    #[error("表构建失败: {0}")]
-    BuildError(String),
-    
-    #[error("查询失败: {0}")]
-    QueryError(String),
-    
-    #[error("格式错误: {0}")]
-    FormatError(String),
-}
+use std::collections::HashMap;
 
 /// N-gram 概率表
+///
+/// 使用 HashMap 存储 N-gram 计数，支持条件概率查询。
 pub struct NgramTable {
     /// N-gram 阶数
     order: usize,
-    /// 概率数据（FST 存储）
-    data: Vec<u8>,
+    /// N-gram 计数：(context, word) → count
+    counts: HashMap<(Vec<String>, String), u64>,
+    /// 上下文计数：context → count
+    context_counts: HashMap<Vec<String>, u64>,
     /// 词条数量
     entry_count: usize,
     /// 词汇表大小
@@ -33,34 +21,75 @@ pub struct NgramTable {
 }
 
 impl NgramTable {
-    /// 从文件加载
-    pub fn from_file(path: &Path) -> ImeResult<Self> {
-        // TODO: 实现文件加载逻辑
-        todo!("实现 N-gram 表文件加载")
+    /// 创建空表
+    pub fn new(order: usize) -> Self {
+        Self {
+            order,
+            counts: HashMap::new(),
+            context_counts: HashMap::new(),
+            entry_count: 0,
+            vocab_size: 0,
+        }
     }
 
-    /// 从内存加载
-    pub fn from_memory(data: Vec<u8>, order: usize) -> ImeResult<Self> {
-        // TODO: 实现内存加载逻辑
-        todo!("实现 N-gram 表内存加载")
+    /// 从计数数据构建
+    pub fn from_counts(
+        order: usize,
+        counts: HashMap<(Vec<String>, String), u64>,
+    ) -> Self {
+        let mut context_counts: HashMap<Vec<String>, u64> = HashMap::new();
+        let mut vocab: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut entry_count: u64 = 0;
+
+        for ((context, word), count) in &counts {
+            *context_counts.entry(context.clone()).or_insert(0) += count;
+            vocab.insert(word.clone());
+            entry_count += count;
+        }
+
+        Self {
+            order,
+            counts,
+            context_counts,
+            entry_count: entry_count as usize,
+            vocab_size: vocab.len(),
+        }
     }
 
-    /// 查询 N-gram 概率
-    pub fn lookup(&self, context: &[&str], word: &str) -> ImeResult<f64> {
-        // TODO: 实现查询逻辑
-        todo!("实现 N-gram 概率查询")
+    /// 查询 P(word | context)
+    ///
+    /// 使用最大似然估计：P(w|c) = count(c,w) / count(c)
+    pub fn lookup(&self, context: &[&str], word: &str) -> f64 {
+        let ctx: Vec<String> = context.iter().map(|s| s.to_string()).collect();
+        let key = (ctx.clone(), word.to_string());
+
+        let ngram_count = self.counts.get(&key).copied().unwrap_or(0);
+        let ctx_count = self.context_counts.get(&ctx).copied().unwrap_or(0);
+
+        if ctx_count == 0 {
+            0.0
+        } else {
+            ngram_count as f64 / ctx_count as f64
+        }
     }
 
-    /// 查询条件概率 P(word | context)
-    pub fn conditional_probability(&self, context: &[&str], word: &str) -> ImeResult<f64> {
-        // TODO: 实现条件概率计算
-        todo!("实现条件概率计算")
+    /// 查询条件概率（带 Laplace 平滑）
+    pub fn conditional_probability(&self, context: &[&str], word: &str) -> f64 {
+        let ctx: Vec<String> = context.iter().map(|s| s.to_string()).collect();
+        let key = (ctx.clone(), word.to_string());
+
+        let ngram_count = self.counts.get(&key).copied().unwrap_or(0);
+        let ctx_count = self.context_counts.get(&ctx).copied().unwrap_or(0);
+
+        // Laplace 平滑：(count + 1) / (context_count + vocab_size)
+        let vocab = self.vocab_size.max(1) as f64;
+        (ngram_count as f64 + 1.0) / (ctx_count as f64 + vocab)
     }
 
     /// 获取 N-gram 计数
-    pub fn count(&self, ngram: &[&str]) -> ImeResult<u64> {
-        // TODO: 实现计数查询
-        todo!("实现 N-gram 计数查询")
+    pub fn count(&self, context: &[&str], word: &str) -> u64 {
+        let ctx: Vec<String> = context.iter().map(|s| s.to_string()).collect();
+        self.counts.get(&(ctx, word.to_string())).copied().unwrap_or(0)
     }
 
     /// 获取阶数
@@ -85,97 +114,154 @@ impl NgramTable {
 
     /// 获取表统计信息
     pub fn stats(&self) -> TableStats {
-        // TODO: 实现统计信息获取
-        todo!("获取表统计信息")
+        let unique_contexts = self.context_counts.len();
+        let avg = if unique_contexts > 0 {
+            self.entry_count as f64 / unique_contexts as f64
+        } else {
+            0.0
+        };
+
+        TableStats {
+            total_ngrams: self.counts.len(),
+            unique_contexts,
+            unique_words: self.vocab_size,
+            avg_words_per_context: avg,
+        }
     }
 }
 
 /// 表统计信息
 #[derive(Debug, Clone, Default)]
 pub struct TableStats {
-    /// 总 N-gram 数量
     pub total_ngrams: usize,
-    /// 不同上下文数量
     pub unique_contexts: usize,
-    /// 不同词汇数量
     pub unique_words: usize,
-    /// 平均每上下文词汇数
     pub avg_words_per_context: f64,
 }
 
 /// N-gram 表构建器
 pub struct NgramTableBuilder {
-    /// N-gram 阶数
     order: usize,
-    /// 计数存储
-    counts: std::collections::HashMap<Vec<String>, u64>,
-    /// 最小计数阈值
+    counts: HashMap<(Vec<String>, String), u64>,
     min_count: u64,
 }
 
 impl NgramTableBuilder {
-    /// 创建新的构建器
     pub fn new(order: usize) -> Self {
         Self {
             order,
-            counts: std::collections::HashMap::new(),
+            counts: HashMap::new(),
             min_count: 1,
         }
     }
 
-    /// 设置最小计数阈值
     pub fn with_min_count(mut self, min_count: u64) -> Self {
         self.min_count = min_count;
         self
     }
 
     /// 添加 N-gram 计数
-    pub fn add_count(&mut self, ngram: Vec<String>, count: u64) {
-        *self.counts.entry(ngram).or_insert(0) += count;
+    pub fn add_count(&mut self, context: Vec<String>, word: String, count: u64) {
+        *self.counts.entry((context, word)).or_insert(0) += count;
     }
 
-    /// 从文本语料库构建
-    pub fn from_corpus(&mut self, corpus: &[String]) {
-        // TODO: 实现语料库构建逻辑
-        todo!("实现从语料库构建")
+    /// 从句子列表构建
+    ///
+    /// 每个句子是一个词序列，自动提取 N-gram 计数。
+    pub fn from_sentences(&mut self, sentences: &[Vec<String>]) {
+        for sentence in sentences {
+            if sentence.len() < self.order {
+                continue;
+            }
+            for i in 0..=sentence.len() - self.order {
+                let context = sentence[i..i + self.order - 1].to_vec();
+                let word = sentence[i + self.order - 1].clone();
+                *self.counts.entry((context, word)).or_insert(0) += 1;
+            }
+        }
     }
 
-    /// 构建表
-    pub fn build(self) -> ImeResult<NgramTable> {
-        // TODO: 实现构建逻辑
-        todo!("实现 N-gram 表构建")
+    /// 构建表（过滤低频 N-gram）
+    pub fn build(self) -> NgramTable {
+        let counts: HashMap<(Vec<String>, String), u64> = self
+            .counts
+            .into_iter()
+            .filter(|(_, count)| *count >= self.min_count)
+            .collect();
+
+        NgramTable::from_counts(self.order, counts)
     }
 
-    /// 获取当前计数数量
     pub fn count_entries(&self) -> usize {
         self.counts.len()
     }
-
-    /// 清空计数
-    pub fn clear(&mut self) {
-        self.counts.clear();
-    }
 }
 
-/// N-gram 表验证器
-pub struct TableValidator;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl TableValidator {
-    /// 验证表文件格式
-    pub fn validate_file(path: &Path) -> ImeResult<()> {
-        // TODO: 实现文件验证逻辑
-        todo!("实现表文件验证")
+    fn build_test_table() -> NgramTable {
+        let mut builder = NgramTableBuilder::new(2);
+        // "我 爱 中国" 的 bigram
+        builder.add_count(vec!["我".into()], "爱".into(), 10);
+        builder.add_count(vec!["爱".into()], "中国".into(), 8);
+        builder.add_count(vec!["我".into()], "是".into(), 5);
+        builder.add_count(vec!["是".into()], "好人".into(), 3);
+        builder.build()
     }
 
-    /// 验证表数据一致性
-    pub fn validate_consistency(table: &NgramTable) -> ImeResult<()> {
-        // TODO: 实现一致性验证
-        todo!("实现表数据一致性验证")
+    #[test]
+    fn test_lookup() {
+        let table = build_test_table();
+        assert_eq!(table.lookup(&["我"], "爱"), 10.0 / 15.0);
+        assert_eq!(table.lookup(&["我"], "是"), 5.0 / 15.0);
+        assert_eq!(table.lookup(&["我"], "不"), 0.0);
     }
 
-    /// 检查表完整性
-    pub fn check_integrity(table: &NgramTable) -> bool {
-        // TODO: 实现完整性检查
-        todo!("实现表完整性检查")
+    #[test]
+    fn test_conditional_probability() {
+        let table = build_test_table();
+        let prob = table.conditional_probability(&["我"], "爱");
+        assert!(prob > 0.0);
+        assert!(prob <= 1.0);
+    }
+
+    #[test]
+    fn test_count() {
+        let table = build_test_table();
+        assert_eq!(table.count(&["我"], "爱"), 10);
+        assert_eq!(table.count(&["我"], "是"), 5);
+        assert_eq!(table.count(&["我"], "不"), 0);
+    }
+
+    #[test]
+    fn test_stats() {
+        let table = build_test_table();
+        let stats = table.stats();
+        assert!(stats.total_ngrams > 0);
+        assert!(stats.unique_contexts > 0);
+    }
+
+    #[test]
+    fn test_from_sentences() {
+        let mut builder = NgramTableBuilder::new(2);
+        let sentences = vec![
+            vec!["我".into(), "爱".into(), "你".into()],
+            vec!["我".into(), "爱".into(), "中国".into()],
+        ];
+        builder.from_sentences(&sentences);
+        let table = builder.build();
+        assert_eq!(table.count(&["我"], "爱"), 2);
+    }
+
+    #[test]
+    fn test_min_count_filter() {
+        let mut builder = NgramTableBuilder::new(2).with_min_count(5);
+        builder.add_count(vec!["a".into()], "b".into(), 10);
+        builder.add_count(vec!["c".into()], "d".into(), 2); // 低于阈值
+        let table = builder.build();
+        assert_eq!(table.count(&["a"], "b"), 10);
+        assert_eq!(table.count(&["c"], "d"), 0); // 被过滤
     }
 }
