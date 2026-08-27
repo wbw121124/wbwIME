@@ -1,37 +1,19 @@
 //! 排序器主体模块
+//!
+//! 提供候选词排序功能，支持加权排序、L0 动态学习。
 
 use std::num::NonZeroUsize;
-use thiserror::Error;
-use wbw_types::{Candidate, ImeResult, RankConfig};
+use std::time::Instant;
+use wbw_types::{Candidate, CandidateSource, L0Config, RankConfig};
 use crate::config::RankConfigManager;
 use crate::weight::{WeightCalculator, WeightNormalizer};
 use crate::l0_learn::L0Learner;
 
-/// 排序错误类型
-#[derive(Error, Debug)]
-pub enum RankerError {
-    #[error("排序计算失败: {0}")]
-    CalculationError(String),
-    
-    #[error("配置错误: {0}")]
-    ConfigError(String),
-    
-    #[error("数据不足: {0}")]
-    InsufficientData(String),
-    
-    #[error("学习错误: {0}")]
-    LearningError(String),
-}
-
 /// 排序器
 pub struct Ranker {
-    /// 配置管理器
     config_manager: RankConfigManager,
-    /// 权重计算器
     weight_calculator: WeightCalculator,
-    /// L0 学习器
     l0_learner: L0Learner,
-    /// 排序缓存
     cache: Option<lru::LruCache<String, Vec<Candidate>>>,
 }
 
@@ -39,9 +21,9 @@ impl Ranker {
     /// 创建新的排序器
     pub fn new(config: RankConfig) -> Self {
         let weight_calculator = WeightCalculator::new(config.clone());
-        let l0_config = wbw_types::L0Config::default();
+        let l0_config = L0Config::default();
         let l0_learner = L0Learner::new(l0_config);
-        
+
         Self {
             config_manager: RankConfigManager::from_memory(config),
             weight_calculator,
@@ -54,9 +36,9 @@ impl Ranker {
     pub fn from_config_manager(config_manager: RankConfigManager) -> Self {
         let config = config_manager.config().clone();
         let weight_calculator = WeightCalculator::new(config.clone());
-        let l0_config = wbw_types::L0Config::default();
+        let l0_config = L0Config::default();
         let l0_learner = L0Learner::new(l0_config);
-        
+
         Self {
             config_manager,
             weight_calculator,
@@ -66,19 +48,67 @@ impl Ranker {
     }
 
     /// 排序候选词
-    pub fn rank(&self, candidates: Vec<Candidate>) -> ImeResult<Vec<Candidate>> {
-        // TODO: 实现排序逻辑
-        todo!("实现候选词排序")
+    ///
+    /// 按权重降序排列候选词。
+    pub fn rank(&self, candidates: Vec<Candidate>) -> Vec<Candidate> {
+        let start = Instant::now();
+
+        // 计算权重
+        let mut weighted: Vec<(Candidate, f64)> = candidates
+            .into_iter()
+            .map(|c| {
+                let weight = self.weight_calculator.calculate_weight(&c);
+                (c, weight)
+            })
+            .collect();
+
+        // 按权重降序排序
+        weighted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // 归一化权重
+        let mut weights: Vec<f64> = weighted.iter().map(|(_, w)| *w).collect();
+        WeightNormalizer::min_max_normalize(&mut weights);
+
+        // 提取排序后的候选词
+        let result: Vec<Candidate> = weighted.into_iter().map(|(c, _)| c).collect();
+
+        let _elapsed = start.elapsed().as_millis();
+        result
     }
 
     /// 带上下文的排序
+    ///
+    /// 考虑上下文调整候选词权重。
     pub fn rank_with_context(
         &self,
         candidates: Vec<Candidate>,
         context: &str,
-    ) -> ImeResult<Vec<Candidate>> {
-        // TODO: 实现带上下文的排序
-        todo!("实现带上下文的排序")
+    ) -> Vec<Candidate> {
+        let mut ranked = self.rank(candidates);
+
+        // 如果有上下文，根据上下文调整权重
+        // 简单实现：检查候选词是否与上下文相关
+        if !context.is_empty() {
+            ranked.sort_by(|a, b| {
+                let a_relevance = self.context_relevance(&a.text, context);
+                let b_relevance = self.context_relevance(&b.text, context);
+                b_relevance
+                    .partial_cmp(&a_relevance)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
+
+        ranked
+    }
+
+    /// 计算候选词与上下文的相关性
+    fn context_relevance(&self, word: &str, context: &str) -> f64 {
+        // 简单实现：如果候选词出现在上下文中，相关性为 1.0
+        if context.contains(word) {
+            1.0
+        } else {
+            0.0
+        }
     }
 
     /// 记录用户选择（用于 L0 学习）
@@ -86,10 +116,9 @@ impl Ranker {
         self.l0_learner.record_selection(code, word);
     }
 
-    /// 获取排序建议
-    pub fn get_suggestions(&self) -> Vec<wbw_types::Candidate> {
-        // TODO: 实现排序建议获取
-        todo!("获取排序建议")
+    /// 获取 L0 学习建议
+    pub fn get_l0_suggestions(&self) -> Vec<(String, String, u32)> {
+        self.l0_learner.get_top_suggestions(10)
     }
 
     /// 获取配置
@@ -123,106 +152,53 @@ impl Ranker {
             cache.clear();
         }
     }
-
-    /// 获取缓存命中率
-    pub fn cache_hit_rate(&self) -> f64 {
-        // TODO: 实现缓存统计
-        todo!("获取缓存命中率")
-    }
 }
 
 /// 排序策略
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RankStrategy {
-    /// 加权排序
     Weighted,
-    /// 基于学习的排序
     LearningBased,
-    /// 混合排序
     Hybrid,
-    /// 个性化排序
-    Personalized,
 }
 
 /// 排序结果
 #[derive(Debug, Clone)]
 pub struct RankResult {
-    /// 排序后的候选词
     pub candidates: Vec<Candidate>,
-    /// 排序耗时（毫秒）
     pub elapsed_ms: f64,
-    /// 使用的策略
     pub strategy: RankStrategy,
-    /// 排序统计
-    pub stats: RankStats,
-}
-
-/// 排序统计
-#[derive(Debug, Clone, Default)]
-pub struct RankStats {
-    /// 总候选词数
-    pub total_candidates: usize,
-    /// 排序后候选词数
-    pub ranked_candidates: usize,
-    /// 平均权重
-    pub avg_weight: f64,
-    /// 最大权重
-    pub max_weight: f64,
-    /// 最小权重
-    pub min_weight: f64,
-    /// 缓存命中次数
-    pub cache_hits: usize,
-    /// 缓存未命中次数
-    pub cache_misses: usize,
 }
 
 /// 排序器构建器
 pub struct RankerBuilder {
     config: RankConfig,
     cache_size: Option<usize>,
-    l0_config: Option<wbw_types::L0Config>,
 }
 
 impl RankerBuilder {
-    /// 创建新的构建器
     pub fn new() -> Self {
         Self {
             config: RankConfig::default(),
             cache_size: Some(1000),
-            l0_config: None,
         }
     }
 
-    /// 设置配置
     pub fn with_config(mut self, config: RankConfig) -> Self {
         self.config = config;
         self
     }
 
-    /// 设置缓存大小
     pub fn with_cache_size(mut self, size: usize) -> Self {
         self.cache_size = Some(size);
         self
     }
 
-    /// 设置 L0 配置
-    pub fn with_l0_config(mut self, config: wbw_types::L0Config) -> Self {
-        self.l0_config = Some(config);
-        self
-    }
-
-    /// 构建排序器
     pub fn build(self) -> Ranker {
         let mut ranker = Ranker::new(self.config);
-        
         if let Some(cache_size) = self.cache_size {
             ranker.cache = Some(lru::LruCache::new(NonZeroUsize::new(cache_size).unwrap()));
         }
-        
-        if let Some(l0_config) = self.l0_config {
-            ranker.l0_learner = L0Learner::new(l0_config);
-        }
-        
         ranker
     }
 }
@@ -230,5 +206,62 @@ impl RankerBuilder {
 impl Default for RankerBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_candidates() -> Vec<Candidate> {
+        vec![
+            Candidate {
+                text: "中国".into(),
+                code: "zhongguo".into(),
+                score: 100.0,
+                source: CandidateSource::System,
+                ngram_score: None,
+                user_weight: None,
+            },
+            Candidate {
+                text: "终于".into(),
+                code: "zhongyu".into(),
+                score: 50.0,
+                source: CandidateSource::System,
+                ngram_score: None,
+                user_weight: None,
+            },
+        ]
+    }
+
+    #[test]
+    fn test_rank() {
+        let ranker = Ranker::new(RankConfig::default());
+        let candidates = test_candidates();
+        let ranked = ranker.rank(candidates);
+        assert_eq!(ranked.len(), 2);
+    }
+
+    #[test]
+    fn test_rank_with_context() {
+        let ranker = Ranker::new(RankConfig::default());
+        let candidates = test_candidates();
+        let ranked = ranker.rank_with_context(candidates, "中国");
+        assert_eq!(ranked.len(), 2);
+    }
+
+    #[test]
+    fn test_record_selection() {
+        let mut ranker = Ranker::new(RankConfig::default());
+        ranker.record_selection("zhongguo", "中国");
+        assert_eq!(ranker.l0_learner().data_count(), 1);
+    }
+
+    #[test]
+    fn test_builder() {
+        let ranker = RankerBuilder::new()
+            .with_cache_size(500)
+            .build();
+        assert!(ranker.cache.is_some());
     }
 }

@@ -72,8 +72,47 @@ impl L0Learner {
 
     /// 获取学习建议
     pub fn get_suggestions(&self) -> Vec<LearningSuggestion> {
-        // TODO: 实现学习建议生成
-        todo!("实现学习建议生成")
+        self.counters
+            .iter()
+            .filter(|(_, &count)| count >= self.config.threshold)
+            .map(|(key, &count)| {
+                let parts: Vec<&str> = key.split(':').collect();
+                let code = parts.get(0).unwrap_or(&"").to_string();
+                let word = parts.get(1).unwrap_or(&"").to_string();
+                let confidence = (count as f64 / (self.config.threshold as f64 * 2.0)).min(1.0);
+                LearningSuggestion {
+                    code,
+                    word,
+                    confidence,
+                    selection_count: count,
+                    suggestion_type: if count >= self.config.threshold * 2 {
+                        SuggestionType::FreqBoost
+                    } else {
+                        SuggestionType::Reorder
+                    },
+                }
+            })
+            .collect()
+    }
+
+    /// 获取高频建议（code, word, count）
+    pub fn get_top_suggestions(&self, limit: usize) -> Vec<(String, String, u32)> {
+        let mut entries: Vec<(&String, &u32)> = self.counters.iter().collect();
+        entries.sort_by(|a, b| b.1.cmp(a.1));
+        entries
+            .into_iter()
+            .take(limit)
+            .filter_map(|(key, &count)| {
+                if count >= self.config.threshold {
+                    let parts: Vec<&str> = key.split(':').collect();
+                    let code = parts.get(0)?.to_string();
+                    let word = parts.get(1)?.to_string();
+                    Some((code, word, count))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     /// 应用学习结果
