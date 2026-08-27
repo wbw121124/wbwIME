@@ -81,6 +81,7 @@ impl CinParser {
     /// 从字符串解析
     pub fn parse_str(&self, content: &str) -> ImeResult<Vec<CinEntry>> {
         let mut map: HashMap<String, CinEntry> = HashMap::new();
+        let mut in_keyname_section = false;
 
         for (line_num, line) in content.lines().enumerate() {
             let line_num = line_num + 1; // 行号从 1 开始
@@ -91,7 +92,22 @@ impl CinParser {
                 continue;
             }
 
-            // 跳过注释行
+            // 处理特殊段落标记
+            if trimmed.starts_with("%keyname begin") {
+                in_keyname_section = true;
+                continue;
+            }
+            if trimmed.starts_with("%keyname end") {
+                in_keyname_section = false;
+                continue;
+            }
+
+            // 跳过 keyname 段落中的条目（这些是按键映射，不是码表条目）
+            if in_keyname_section {
+                continue;
+            }
+
+            // 跳过注释行（% 开头的其他行）
             if self.skip_comments && trimmed.starts_with(&self.comment_prefix) {
                 continue;
             }
@@ -255,5 +271,63 @@ mod tests {
         let parser = CinParser::new("_");
         let result = parser.parse_str(content);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_cin_with_keyname_section() {
+        // cs-oi.cin 格式：包含 %keyname begin/end 和 %chardef begin/end
+        let content = "%gen_inp\n%ename Test\n%keyname begin\na a\nb b\n%keyname end\n%chardef begin\nmn 模拟\nmh 枚举\nbl 暴力\n%chardef end\n";
+        let parser = CinParser::new("_");
+        let entries = parser.parse_str(content).unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].code, "bl");
+        assert_eq!(entries[0].words[0].word, "暴力");
+        assert_eq!(entries[1].code, "mh");
+        assert_eq!(entries[1].words[0].word, "枚举");
+        assert_eq!(entries[2].code, "mn");
+        assert_eq!(entries[2].words[0].word, "模拟");
+    }
+
+    #[test]
+    fn test_parse_cin_multi_word_entries() {
+        // 同一编码对应多个候选词
+        let content = "bcj 并查集\nbcj Disjoint Set Union\nbcj DSU\n";
+        let parser = CinParser::new("_");
+        let entries = parser.parse_str(content).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].code, "bcj");
+        assert_eq!(entries[0].words.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_cin_abbreviation_codes() {
+        // 缩写编码（非拼音）
+        let content = "kspx 快速排序\nmbpx 冒泡排序\ncrpx 插入排序\n";
+        let parser = CinParser::new("_");
+        let entries = parser.parse_str(content).unwrap();
+        assert_eq!(entries.len(), 3);
+        let codes: Vec<&str> = entries.iter().map(|e| e.code.as_str()).collect();
+        assert!(codes.contains(&"kspx"));
+        assert!(codes.contains(&"mbpx"));
+    }
+
+    #[test]
+    fn test_parse_cs_oi_cin_file() {
+        // 测试真实 cs-oi.cin 文件解析
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("resources")
+            .join("dicts")
+            .join("cs-oi.cin");
+        if path.exists() {
+            let parser = CinParser::new(path.to_str().unwrap());
+            let entries = parser.parse().unwrap();
+            assert!(entries.len() > 100, "cs-oi.cin 应包含大量条目");
+            // 验证特定条目存在
+            let mn_entry = entries.iter().find(|e| e.code == "mn");
+            assert!(mn_entry.is_some(), "应包含 'mn 模拟' 条目");
+            assert_eq!(mn_entry.unwrap().words[0].word, "模拟");
+        }
     }
 }

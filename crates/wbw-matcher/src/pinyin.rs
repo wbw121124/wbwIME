@@ -37,7 +37,7 @@ static VALID_SYLLABLES: &[&str] = &[
     "liao", "liu", "lian", "lin", "liang", "ling", "long", "lu", "luo", "luan", "lun", "lü",
     "lüe",
     "ga", "ge", "gai", "gei", "gao", "gou", "gan", "gen", "gang", "geng", "gong", "gu", "gua",
-    "guai", "gui", "guan", "gun", "guang",
+    "guai", "gui", "guan", "gun", "guang", "guo",
     "ka", "ke", "kai", "kei", "kao", "kou", "kan", "ken", "kang", "keng", "kong", "ku", "kua",
     "kuai", "kui", "kuan", "kun", "kuang",
     "ha", "he", "hai", "hei", "hao", "hou", "han", "hen", "hang", "heng", "hong", "hu", "hua",
