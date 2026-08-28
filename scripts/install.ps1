@@ -32,15 +32,24 @@ Write-Host "  已获得管理员权限" -ForegroundColor Green
 
 # ---------- 2. 查找构建产物 ----------
 Write-Host "`n[2/6] 查找构建产物..." -ForegroundColor Yellow
-$targetDir = "$ProjectRoot\target\release"
-if (-not (Test-Path $targetDir)) {
-    $targetDir = "$ProjectRoot\target\debug"
-}
-Write-Host "  构建目录: $targetDir"
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
-$tsfDll = Join-Path $targetDir "wbw_ime_tsf.dll"
-$nativeDll = Join-Path $targetDir "wbw_ime_native.dll"
-$cliExe = Join-Path $targetDir "wbwime.exe"
+# 分发包模式：DLL/EXE 与 install.ps1 同目录
+$tsfDll = Join-Path $scriptDir "wbw_ime_tsf.dll"
+$nativeDll = Join-Path $scriptDir "wbw_ime_native.dll"
+$cliExe = Join-Path $scriptDir "wbwime.exe"
+
+# 构建模式：查找 target/release 或 target/debug
+if (-not (Test-Path $tsfDll) -and -not (Test-Path $cliExe)) {
+    $targetDir = "$ProjectRoot\target\release"
+    if (-not (Test-Path $targetDir)) {
+        $targetDir = "$ProjectRoot\target\debug"
+    }
+    Write-Host "  构建目录: $targetDir"
+    $tsfDll = Join-Path $targetDir "wbw_ime_tsf.dll"
+    $nativeDll = Join-Path $targetDir "wbw_ime_native.dll"
+    $cliExe = Join-Path $targetDir "wbwime.exe"
+}
 
 $foundFiles = @()
 if (Test-Path $tsfDll) { $foundFiles += "wbw_ime_tsf.dll (TSF 输入法)" }
@@ -81,8 +90,11 @@ if (Test-Path $cliExe) {
     $filesToCopy += "wbwime.exe"
 }
 
-# 复制词典
-$dictsSrc = Join-Path $ProjectRoot "resources\dicts"
+# 复制词典 — 先查分发包目录，再查项目目录
+$dictsSrc = Join-Path $scriptDir "dicts"
+if (-not (Test-Path $dictsSrc)) {
+    $dictsSrc = Join-Path $ProjectRoot "resources\dicts"
+}
 if (Test-Path $dictsSrc) {
     $dictsDst = Join-Path $InstallDir "dicts"
     if (-not (Test-Path $dictsDst)) {
@@ -93,16 +105,22 @@ if (Test-Path $dictsSrc) {
     Write-Host "  已复制词典目录" -ForegroundColor Green
 }
 
-# 复制配置
-$configSrc = Join-Path $ProjectRoot "resources\config.toml"
+# 复制配置 — 先查分发包目录，再查项目目录
+$configSrc = Join-Path $scriptDir "config.toml"
+if (-not (Test-Path $configSrc)) {
+    $configSrc = Join-Path $ProjectRoot "resources\config.toml"
+}
 if (Test-Path $configSrc) {
     $configDst = Join-Path $InstallDir "config.toml"
     Copy-Item $configSrc $configDst -Force
     $filesToCopy += "config.toml"
 }
 
-# 复制头文件
-$headerSrc = Join-Path $ProjectRoot "crates\wbw-ime-native\include\wbw_ime_native.h"
+# 复制头文件 — 先查分发包目录，再查项目目录
+$headerSrc = Join-Path $scriptDir "include\wbw_ime_native.h"
+if (-not (Test-Path $headerSrc)) {
+    $headerSrc = Join-Path $ProjectRoot "crates\wbw-ime-native\include\wbw_ime_native.h"
+}
 if (Test-Path $headerSrc) {
     $includeDir = Join-Path $InstallDir "include"
     if (-not (Test-Path $includeDir)) {
