@@ -26,6 +26,25 @@ impl From<ParseError> for wbw_types::ImeError {
     }
 }
 
+/// .cin 解析结果
+pub struct CinParseResult {
+    /// 码表条目
+    pub entries: Vec<CinEntry>,
+    /// 模糊规则
+    pub fuzzy_rules: Vec<CinFuzzyRule>,
+}
+
+/// 从 .cin 文件解析的模糊规则
+#[derive(Debug, Clone)]
+pub struct CinFuzzyRule {
+    /// 规则名称
+    pub name: String,
+    /// 源字符/音素
+    pub from: String,
+    /// 目标字符/音素
+    pub to: String,
+}
+
 /// .cin 解析器
 pub struct CinParser {
     /// 文件路径
@@ -70,17 +89,31 @@ impl CinParser {
         self
     }
 
-    /// 解析码表文件
+    /// 解析码表文件（仅返回条目，忽略模糊规则）
     pub fn parse(&self) -> ImeResult<Vec<CinEntry>> {
-        let content = fs::read_to_string(&self.path)
-            .map_err(|e| wbw_types::ImeError::IoError(format!("读取文件失败 {}: {}", self.path, e)))?;
-        self.parse_str(&content)
+        let result = self.parse_full()?;
+        Ok(result.entries)
     }
 
-    /// 从字符串解析
+    /// 解析码表文件（返回完整结果，包含模糊规则）
+    pub fn parse_full(&self) -> ImeResult<CinParseResult> {
+        let content = fs::read_to_string(&self.path)
+            .map_err(|e| wbw_types::ImeError::IoError(format!("读取文件失败 {}: {}", self.path, e)))?;
+        self.parse_str_full(&content)
+    }
+
+    /// 从字符串解析（仅返回条目，忽略模糊规则）
     pub fn parse_str(&self, content: &str) -> ImeResult<Vec<CinEntry>> {
+        let result = self.parse_str_full(content)?;
+        Ok(result.entries)
+    }
+
+    /// 从字符串解析（返回完整结果，包含模糊规则）
+    pub fn parse_str_full(&self, content: &str) -> ImeResult<CinParseResult> {
         let mut map: HashMap<String, CinEntry> = HashMap::new();
+        let mut fuzzy_rules = Vec::new();
         let mut in_keyname_section = false;
+        let mut in_fuzzy_section = false;
 
         for (line_num, line) in content.lines().enumerate() {
             let line_num = line_num + 1; // 行号从 1 开始
@@ -101,8 +134,34 @@ impl CinParser {
                 continue;
             }
 
-            // 跳过 keyname 段落中的条目（这些是按键映射，不是码表条目）
+            // 处理模糊规则段落
+            if trimmed.starts_with("%fuzzy begin") {
+                in_fuzzy_section = true;
+                continue;
+            }
+            if trimmed.starts_with("%fuzzy end") {
+                in_fuzzy_section = false;
+                continue;
+            }
+
+            // 跳过 keyname 段落中的条目
             if in_keyname_section {
+                continue;
+            }
+
+            // 在 fuzzy 段落中解析模糊规则
+            if in_fuzzy_section {
+                if self.skip_comments && trimmed.starts_with(&self.comment_prefix) {
+                    continue;
+                }
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                if parts.len() == 3 {
+                    fuzzy_rules.push(CinFuzzyRule {
+                        name: parts[0].to_string(),
+                        from: parts[1].to_string(),
+                        to: parts[2].to_string(),
+                    });
+                }
                 continue;
             }
 
@@ -163,10 +222,14 @@ impl CinParser {
                 });
         }
 
-        let mut result: Vec<CinEntry> = map.into_values().collect();
+        let mut entries: Vec<CinEntry> = map.into_values().collect();
         // 按编码排序
-        result.sort_by(|a, b| a.code.cmp(&b.code));
-        Ok(result)
+        entries.sort_by(|a, b| a.code.cmp(&b.code));
+
+        Ok(CinParseResult {
+            entries,
+            fuzzy_rules,
+        })
     }
 
     /// 验证码表格式（不实际解析，只检查格式）
@@ -389,5 +452,35 @@ mod tests {
             assert!(mn_entry.is_some(), "应包含 'mn 模拟' 条目");
             assert_eq!(mn_entry.unwrap().words[0].word, "模拟");
         }
+    }
+
+    #[test]
+    fn test_parse_fuzzy_section() {
+        let content = "%fuzzy begin\nz-zh z zh\nc-ch c ch\ns-sh s sh\nn-l n l\n%fuzzy end\nwo 我\n";
+        let parser = CinParser::new("_");
+        let result = parser.parse_str_full(content).unwrap();
+        assert_eq!(result.entries.len(), 1);
+        assert_eq!(result.fuzzy_rules.len(), 4);
+        assert_eq!(result.fuzzy_rules[0].name, "z-zh");
+        assert_eq!(result.fuzzy_rules[0].from, "z");
+        assert_eq!(result.fuzzy_rules[0].to, "zh");
+    }
+
+    #[test]
+    fn test_parse_fuzzy_section_with_comments() {
+        let content = "%fuzzy begin\n% 这是注释\nz-zh z zh\n% 另一行注释\n%fuzzy end\n";
+        let parser = CinParser::new("_");
+        let result = parser.parse_str_full(content).unwrap();
+        assert_eq!(result.entries.len(), 0);
+        assert_eq!(result.fuzzy_rules.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_empty_fuzzy_section() {
+        let content = "%fuzzy begin\n%fuzzy end\nwo 我\n";
+        let parser = CinParser::new("_");
+        let result = parser.parse_str_full(content).unwrap();
+        assert_eq!(result.entries.len(), 1);
+        assert_eq!(result.fuzzy_rules.len(), 0);
     }
 }

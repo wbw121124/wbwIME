@@ -4,7 +4,7 @@ use std::path::Path;
 use thiserror::Error;
 use wbw_types::ImeResult;
 
-use crate::cin_parser::CinParser;
+use crate::cin_parser::{CinParser, CinParseResult};
 use crate::entry::{DictBuilderConfig, DictEntry, DictSource};
 use crate::fst_dict::{FstDict, FstDictBuilder};
 
@@ -97,6 +97,45 @@ impl DictBuilder {
             }
         }
         Ok(())
+    }
+
+    /// 从 .cin 文件加载（返回完整结果，包含模糊规则）
+    pub fn load_cin_full(&mut self, path: &Path) -> ImeResult<CinParseResult> {
+        let path_str = path.to_str().ok_or_else(|| {
+            wbw_types::ImeError::ParseError("路径包含无效 Unicode".to_string())
+        })?;
+        let parser = CinParser::new(path_str);
+        let result = parser.parse_full()?;
+
+        for cin_entry in &result.entries {
+            for word_entry in &cin_entry.words {
+                self.add_entry(DictEntry {
+                    code: cin_entry.code.clone(),
+                    word: word_entry.word.clone(),
+                    freq: word_entry.freq,
+                    source: DictSource::Base,
+                });
+            }
+        }
+        Ok(result)
+    }
+
+    /// 从字符串加载 .cin 内容（返回完整结果，包含模糊规则）
+    pub fn load_cin_str_full(&mut self, content: &str) -> ImeResult<CinParseResult> {
+        let parser = CinParser::new("_");
+        let result = parser.parse_str_full(content)?;
+
+        for cin_entry in &result.entries {
+            for word_entry in &cin_entry.words {
+                self.add_entry(DictEntry {
+                    code: cin_entry.code.clone(),
+                    word: word_entry.word.clone(),
+                    freq: word_entry.freq,
+                    source: DictSource::Base,
+                });
+            }
+        }
+        Ok(result)
     }
 
     /// 清理重复词条

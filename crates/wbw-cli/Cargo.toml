@@ -9,6 +9,10 @@ license.workspace = true
 name = "wbwime"
 path = "src/main.rs"
 
+[[bench]]
+name = "benchmark"
+harness = false
+
 [dependencies]
 wbw-types = { path = "../wbw-types" }
 wbw-dict = { path = "../wbw-dict" }
@@ -20,3 +24,4 @@ toml.workspace = true
 wbw-core = { path = "../wbw-core" }
 wbw-ngram = { path = "../wbw-ngram" }
 wbw-imekit = { path = "../wbw-imekit" }
+criterion.workspace = true

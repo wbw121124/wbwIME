@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 use std::process;
 
-use wbw_dict::{CinParser, DictBuilder, DictValidator, FstDict};
+use wbw_dict::{CinParser, DictBuilder, DictValidator, FstDict, CinFuzzyRule};
 use wbw_matcher::{Matcher, MatcherConfig};
 use wbw_rank::{Ranker, RankConfigManager, ConfigValidator};
 use wbw_types::{Candidate, GlobalConfig, InputContext, InputMode};
@@ -187,7 +187,7 @@ fn default_dict_path() -> PathBuf {
 }
 
 /// 从 .cin 文件解析并构建 FST 词典
-fn build_fst(path: &Path) -> CliResult<FstDict> {
+fn build_fst(path: &Path) -> CliResult<(FstDict, Vec<CinFuzzyRule>)> {
     if !path.exists() {
         return Err(CliError::DictError(format!(
             "词典文件不存在: {}",
@@ -196,21 +196,25 @@ fn build_fst(path: &Path) -> CliResult<FstDict> {
     }
 
     let mut builder = DictBuilder::new();
-    builder
-        .load_cin(path)
+    let result = builder
+        .load_cin_full(path)
         .map_err(|e| CliError::DictError(e.to_string()))?;
     builder.deduplicate();
     builder.sort();
-    Ok(builder.build_fst())
+    Ok((builder.build_fst(), result.fuzzy_rules))
 }
 
 /// 从 FST 词典构建匹配器
-fn build_matcher(dict: FstDict) -> Matcher {
+fn build_matcher(dict: FstDict, fuzzy_rules: Option<Vec<CinFuzzyRule>>) -> Matcher {
     let config = MatcherConfig {
         fuzzy_enabled: true,
         ..MatcherConfig::default()
     };
-    Matcher::with_dict(config, dict)
+    if let Some(rules) = fuzzy_rules {
+        Matcher::with_fuzzy_rules_and_dict(config, dict, rules)
+    } else {
+        Matcher::with_dict(config, dict)
+    }
 }
 
 /// 构建排序器
@@ -268,7 +272,7 @@ fn run_interactive() -> CliResult<()> {
     println!("示例解码: {} (词条 {})", dict_path.display(), dict_path.exists());
     println!();
 
-    let dict = match build_fst(&dict_path) {
+    let (dict, fuzzy_rules) = match build_fst(&dict_path) {
         Ok(d) => d,
         Err(e) => {
             println!("警告: {}", e);
@@ -276,7 +280,7 @@ fn run_interactive() -> CliResult<()> {
             return Ok(());
         }
     };
-    let mut matcher = build_matcher(dict);
+    let mut matcher = build_matcher(dict, Some(fuzzy_rules));
     let mut ranker = build_ranker(&config)?;
     let mut buffer = String::new();
 
@@ -374,7 +378,7 @@ fn run_query(code: &str) -> CliResult<()> {
     let config = load_config();
     let dict_path = default_dict_path();
 
-    let dict = match build_fst(&dict_path) {
+    let (dict, fuzzy_rules) = match build_fst(&dict_path) {
         Ok(d) => d,
         Err(e) => {
             println!("错误: {}", e);
@@ -382,7 +386,7 @@ fn run_query(code: &str) -> CliResult<()> {
             return Ok(());
         }
     };
-    let matcher = build_matcher(dict);
+    let matcher = build_matcher(dict, Some(fuzzy_rules));
     let ranker = build_ranker(&config)?;
 
     // 精确匹配
@@ -418,10 +422,10 @@ fn run_query(code: &str) -> CliResult<()> {
 /// 执行测试匹配
 fn run_test_match(code: &str, dict_path: &Path) -> CliResult<()> {
     let config = load_config();
-    let dict = build_fst(dict_path)?;
+    let (dict, fuzzy_rules) = build_fst(dict_path)?;
     println!("词典加载成功: {} 条目", dict.entry_count());
 
-    let matcher = build_matcher(dict);
+    let matcher = build_matcher(dict, Some(fuzzy_rules));
     let ranker = build_ranker(&config)?;
 
     let exact = matcher.exact_lookup(code);
@@ -464,12 +468,13 @@ fn run_test_match(code: &str, dict_path: &Path) -> CliResult<()> {
 
 /// 构建 FST 词典（内存构建并验证，当前版本 FST 为内存哈希实现，尚不支持二进制持久化）
 fn run_build_dict(dict_path: &Path, _out_path: &Path) -> CliResult<()> {
-    let dict = build_fst(dict_path)?;
+    let (dict, fuzzy_rules) = build_fst(dict_path)?;
 
     println!("词典构建完成:");
     println!("  输入: {}", dict_path.display());
     println!("  词条: {}", dict.entry_count());
     println!("  编码: {}", dict.code_count());
+    println!("  模糊规则: {} 条", fuzzy_rules.len());
 
     // 抽样验证查询
     let stats = dict.stats();

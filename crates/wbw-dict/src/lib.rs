@@ -5,6 +5,6 @@ pub mod builder;
 
 // 重新导出常用类型
 pub use entry::{CinEntry, DictEntry, DictSource, DictBuilderConfig};
-pub use cin_parser::CinParser;
+pub use cin_parser::{CinParser, CinParseResult, CinFuzzyRule};
 pub use fst_dict::{FstDict, FstDictBuilder, edit_distance};
 pub use builder::{DictBuilder, DictValidator};

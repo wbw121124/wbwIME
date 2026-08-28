@@ -84,6 +84,39 @@ impl Matcher {
         Some(lru::LruCache::new(NonZeroUsize::new(size.max(1))?))
     }
 
+    /// 创建带词典和自定义模糊规则的匹配器
+    pub fn with_fuzzy_rules_and_dict(
+        config: MatcherConfig,
+        dict: FstDict,
+        cin_rules: Vec<wbw_dict::CinFuzzyRule>,
+    ) -> Self {
+        let cache = if config.cache_enabled {
+            Self::new_cache(config.cache_size)
+        } else {
+            None
+        };
+        // 将 .cin 模糊规则转换为 FuzzyRule
+        let mut rules = config.fuzzy_config.rules.clone();
+        for cin_rule in &cin_rules {
+            rules.push(FuzzyRule::new(
+                cin_rule.name.clone(),
+                cin_rule.from.clone(),
+                cin_rule.to.clone(),
+            ));
+        }
+        let fuzzy_config = FuzzyConfig {
+            rules,
+            ..config.fuzzy_config.clone()
+        };
+        let fuzzy_matcher = FuzzyMatcher::new(fuzzy_config);
+        Self {
+            config,
+            dict: Some(dict),
+            fuzzy_matcher,
+            cache,
+        }
+    }
+
     /// 从 .cin 文件加载词典
     pub fn load_cin(&mut self, path: &str) {
         let parser = CinParser::new(path);
