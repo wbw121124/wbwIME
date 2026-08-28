@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 use thiserror::Error;
 use wbw_types::{ImeResult, WordEntry};
 

@@ -8,7 +8,6 @@ use wbw_dict::entry::{DictEntry, DictSource};
 use wbw_dict::{CinParser, FstDict, FstDictBuilder};
 use wbw_types::{Candidate, CandidateSource, InputContext};
 use crate::fuzzy::{FuzzyConfig, FuzzyMatcher, FuzzyRule};
-use crate::segmenter::Segmenter;
 
 /// 匹配器配置
 #[derive(Debug, Clone)]
