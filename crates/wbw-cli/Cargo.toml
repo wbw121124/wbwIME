@@ -16,5 +16,6 @@ wbw-dict = { path = "../wbw-dict" }
 wbw-matcher = { path = "../wbw-matcher" }
 wbw-rank = { path = "../wbw-rank" }
 wbw-ngram = { path = "../wbw-ngram" }
+toml.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
