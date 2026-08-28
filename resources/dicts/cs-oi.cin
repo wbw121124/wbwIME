@@ -1,6 +1,6 @@
 %gen_inp
 %ename CS-OI Contest Glossary
-%cname 信竞术语（简拼）
+%cname 信竞术语(简拼)
 %encoding UTF-8
 %selkey 1234567890
 %keyname begin
@@ -133,7 +133,7 @@ gdyxss 广度优先搜索
 ddjs 迭代加深
 ddjsss 迭代加深搜索
 qfhss 启发式搜索
-ax A星搜索
+ax A*搜索
 ljb 邻接表
 ljjz 邻接矩阵
 zdl 最短路
@@ -180,7 +180,7 @@ bfz 边分治
 stns 斯坦纳树
 zlsf 朱刘算法
 jzsddl 矩阵树定理
-# === 图论术语扩展 ===
+% === 图论术语扩展 ===
 yxt 有向图
 wxt 无向图
 hxt 混合图
@@ -206,6 +206,7 @@ pmt 平面图
 dyt 对偶图
 tpj 竞争图
 dag DAG
+dag 有向无环图
 ywwd 有向无环图
 htt 环图
 ltt 轮图
@@ -268,8 +269,10 @@ ksm 快速幂
 gjd 高精度
 zdgys 最大公约数
 zxgbs 最小公倍数
-gcd gcd
-lcm lcm
+gcd GCD
+gcd 最大公约数
+lcm LCM
+lcm 最小公倍数
 jc 阶乘
 zhs 组合数
 stls 斯特林数
@@ -302,8 +305,11 @@ gsxy 高斯消元
 xxj 线性基
 dcx 单纯形
 fft FFT
+fft 快速傅里叶变换
 ntt NTT
+ntt 快速数论变换
 fwt FWT
+fwt 快速沃尔什变换
 jsjh 计算几何
 cj 叉积
 dj 点积
@@ -351,7 +357,6 @@ csp CSP认证
 lqb 蓝桥杯
 sjfzd 时间复杂度
 kjfzd 空间复杂度
-# === 补充：oi2.cin ===
 fzsz 分治数组
 trie 字典树
 jytrie 可持久化字典树
@@ -621,7 +626,7 @@ bit 树状数组
 fenwick 树状数组
 sparse 稀疏表
 sparsetable 稀疏表
-ac 自动机
+ac AC自动机
 acauto AC自动机
 sam 后缀自动机
 suffix 后缀自动机
@@ -634,6 +639,7 @@ lcis 最长公共上升子序列
 manacher 马拉车
 zalg Z函数
 exkmp 扩展KMP
+exkmp exKMP
 pam 回文自动机
 palindrome 回文自动机
 crt 中国剩余定理
@@ -754,7 +760,8 @@ yxd 优先队列
 kzl 块状链表
 szs 树状数组
 lcx 李超线段树
-jsj 吉司机线段树 / 计算几何
+jsj 吉司机线段树
+jsj 计算几何
 kcj 可持久化线段树
 dke 笛卡尔树
 slp 树链剖分
@@ -767,11 +774,11 @@ ddj 迭代加深
 qfh 启发式搜索
 ljj 邻接矩阵
 spf SPFA
-fly 弗洛伊德
-bem 贝尔曼福特
+fly Floyd 算法
+bem Bellmanford 算法
 zxs 最小生成树
 cxs 次小生成树
-kls 克鲁斯卡尔
+kls Kruskal
 tpl 拓扑排序
 qlf 强连通分量
 slf 双连通分量
@@ -782,7 +789,8 @@ dqf 当前弧优化
 xya 匈牙利算法
 ybt 一般图匹配
 zjg 最近公共祖先
-sdz 树的直径 / 树的重心
+sdz 树的直径
+sdz 树的重心
 stn 斯坦纳树
 zls 朱刘算法
 jzs 矩阵树定理
