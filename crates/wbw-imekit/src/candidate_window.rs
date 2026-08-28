@@ -1,8 +1,7 @@
 //! 候选窗口模块
 
-use std::fmt;
 use thiserror::Error;
-use wbw_types::{Candidate, ImeError, ImeResult};
+use wbw_types::{Candidate, ImeResult};
 
 /// 候选窗口错误类型
 #[derive(Error, Debug)]
@@ -158,15 +157,13 @@ impl CandidateWindow {
     /// 显示窗口
     pub fn show(&mut self) -> ImeResult<()> {
         self.visible = true;
-        // TODO: 实现窗口显示逻辑
-        todo!("实现候选窗口显示")
+        Ok(())
     }
 
     /// 隐藏窗口
     pub fn hide(&mut self) -> ImeResult<()> {
         self.visible = false;
-        // TODO: 实现窗口隐藏逻辑
-        todo!("实现候选窗口隐藏")
+        Ok(())
     }
 
     /// 选择下一个
@@ -292,14 +289,27 @@ impl CandidateWindow {
 
     /// 渲染窗口
     pub fn render(&self) -> ImeResult<()> {
-        // TODO: 实现窗口渲染逻辑
-        todo!("实现候选窗口渲染")
+        // 逐项输出当前页候选词 "索引. 词文本"
+        for (i, candidate) in self.current_page_candidates().iter().enumerate() {
+            println!("{}. {}", i, candidate.text);
+        }
+        Ok(())
     }
 
     /// 处理点击事件
     pub fn handle_click(&mut self, x: i32, y: i32) -> Option<usize> {
-        // TODO: 实现点击事件处理
-        todo!("实现候选窗口点击事件处理")
+        const ITEM_WIDTH: i32 = 30;
+        // y 超出窗口高度范围则忽略
+        if y < 0 || y >= self.position.height as i32 {
+            return None;
+        }
+        let index = if x < 0 { 0 } else { (x / ITEM_WIDTH) as usize };
+        if index < self.current_page_candidates().len() {
+            self.select(index);
+            Some(index)
+        } else {
+            None
+        }
     }
 }
 
@@ -429,5 +439,70 @@ impl CandidateWindowManager {
 impl Default for CandidateWindowManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_candidate(text: &str) -> Candidate {
+        Candidate {
+            text: text.to_string(),
+            code: String::new(),
+            score: 0.0,
+            source: wbw_types::CandidateSource::System,
+            ngram_score: None,
+            user_weight: None,
+        }
+    }
+
+    fn make_window() -> CandidateWindow {
+        CandidateWindow::new(
+            WindowPosition::new(0, 0, 300, 200),
+            WindowStyle::default(),
+        )
+    }
+
+    #[test]
+    fn test_show_hide() {
+        let mut window = make_window();
+        assert!(!window.is_visible());
+        window.show().unwrap();
+        assert!(window.is_visible());
+        window.hide().unwrap();
+        assert!(!window.is_visible());
+    }
+
+    #[test]
+    fn test_pagination_and_select_next() {
+        let mut window = make_window();
+        let candidates: Vec<Candidate> = (0..25).map(|i| make_candidate(&format!("词{}", i))).collect();
+        window.set_candidates(candidates);
+        assert_eq!(window.page(), 0);
+        assert_eq!(window.current_page_candidates().len(), 10);
+
+        // select_next 在本页内移动
+        assert!(window.select_next());
+        assert_eq!(window.selected_index(), 1);
+
+        // 翻到下一页
+        assert!(window.next_page());
+        assert_eq!(window.page(), 1);
+        assert_eq!(window.selected_index(), 0);
+        // 再翻到上一页
+        assert!(window.prev_page());
+        assert_eq!(window.page(), 0);
+    }
+
+    #[test]
+    fn test_handle_click_select() {
+        let mut window = make_window();
+        let candidates: Vec<Candidate> = (0..10).map(|i| make_candidate(&format!("词{}", i))).collect();
+        window.set_candidates(candidates);
+        // 第 2 个候选（索引 1）位置在 [30, 60)
+        let selected = window.handle_click(45, 10);
+        assert_eq!(selected, Some(1));
+        assert_eq!(window.selected_index(), 1);
     }
 }

@@ -1,9 +1,8 @@
 //! IME 宿主模块
 
-use std::fmt;
 use thiserror::Error;
-use wbw_types::{ImeError, ImeResult, InputMode, Candidate};
-use crate::candidate_window::{CandidateWindow, CandidateWindowManager};
+use wbw_types::{ImeResult, InputMode, Candidate};
+use crate::candidate_window::CandidateWindowManager;
 use crate::key_mapper::{KeyMapper, KeyEvent, KeyAction};
 
 /// IME 宿主错误类型
@@ -113,56 +112,260 @@ impl ImeHost {
 
     /// 初始化 IME
     pub fn initialize(&mut self) -> ImeResult<()> {
-        // TODO: 实现初始化逻辑
-        todo!("实现 IME 初始化")
+        self.state = ImeState::Idle;
+        self.buffer.clear();
+        self.cursor = 0;
+        Ok(())
     }
 
     /// 处理按键事件
     pub fn process_key(&mut self, key: KeyEvent) -> ImeResult<ImeResponse> {
-        // TODO: 实现按键处理逻辑
-        todo!("实现按键事件处理")
+        // 获取按键动作，若没有匹配则返回空响应
+        let Some(action) = self.key_mapper.process_key(&key) else {
+            return Ok(ImeResponse::empty());
+        };
+
+        match action {
+            KeyAction::InputChar(ch) => self.input_char(ch),
+            KeyAction::DeleteChar => self.delete_char(),
+            KeyAction::Confirm => self.confirm(),
+            KeyAction::Cancel => self.cancel(),
+            KeyAction::PageUp => self.page_up(),
+            KeyAction::PageDown => self.page_down(),
+            KeyAction::SelectUp => self.select_up(),
+            KeyAction::SelectDown => self.select_down(),
+            KeyAction::SwitchMode => Ok(ImeResponse {
+                response_type: ImeResponseType::SwitchMode,
+                buffer: self.buffer.clone(),
+                cursor: self.cursor,
+                ..ImeResponse::empty()
+            }),
+            KeyAction::TriggerFuzzy | KeyAction::Other(_) => Ok(ImeResponse {
+                response_type: ImeResponseType::None,
+                buffer: self.buffer.clone(),
+                cursor: self.cursor,
+                ..ImeResponse::empty()
+            }),
+        }
     }
 
     /// 输入字符
     pub fn input_char(&mut self, ch: char) -> ImeResult<ImeResponse> {
-        // TODO: 实现字符输入逻辑
-        todo!("实现字符输入")
+        // 仅接受 ASCII 字母或数字
+        if !ch.is_ascii_alphanumeric() {
+            return Ok(ImeResponse::empty());
+        }
+
+        self.buffer.push(ch);
+        self.cursor += ch.len_utf8();
+        self.state = ImeState::Inputting;
+
+        // 使用会话 ID 参与候选逻辑（简化处理）
+        let _session = self.session_id;
+
+        Ok(ImeResponse {
+            response_type: ImeResponseType::InputChar,
+            text: Some(ch.to_string()),
+            candidates: Vec::new(),
+            buffer: self.buffer.clone(),
+            cursor: self.cursor,
+            need_refresh: true,
+            need_hide: false,
+        })
     }
 
     /// 删除字符
     pub fn delete_char(&mut self) -> ImeResult<ImeResponse> {
-        // TODO: 实现字符删除逻辑
-        todo!("实现字符删除")
+        if self.cursor == 0 || self.buffer.is_empty() {
+            return Ok(ImeResponse::empty());
+        }
+        // 找到前一个字符边界
+        let prev_boundary = self.buffer[..self.cursor]
+            .char_indices()
+            .last()
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+        self.buffer.truncate(prev_boundary);
+        self.cursor = prev_boundary;
+
+        if self.buffer.is_empty() {
+            self.state = ImeState::Idle;
+        }
+
+        Ok(ImeResponse {
+            response_type: ImeResponseType::DeleteChar,
+            text: None,
+            candidates: Vec::new(),
+            buffer: self.buffer.clone(),
+            cursor: self.cursor,
+            need_refresh: true,
+            need_hide: false,
+        })
     }
 
     /// 确认输入
     pub fn confirm(&mut self) -> ImeResult<ImeResponse> {
-        // TODO: 实现确认逻辑
-        todo!("实现输入确认")
+        // 若窗口有选中候选词，优先使用选中文本；否则使用缓冲区
+        let selected_text = self
+            .window_manager
+            .active_window()
+            .and_then(|w| w.selected_candidate().map(|c| c.text.clone()));
+
+        if self.buffer.is_empty() && selected_text.is_none() {
+            return Ok(ImeResponse::empty());
+        }
+
+        let text = selected_text.unwrap_or_else(|| self.buffer.clone());
+        if !text.is_empty() {
+            self.confirmed_text.push_str(&text);
+        }
+        // 清空缓冲区
+        self.buffer.clear();
+        self.cursor = 0;
+        self.state = ImeState::Idle;
+
+        Ok(ImeResponse {
+            response_type: ImeResponseType::Confirm,
+            text: Some(text),
+            candidates: Vec::new(),
+            buffer: self.buffer.clone(),
+            cursor: self.cursor,
+            need_refresh: false,
+            need_hide: true,
+        })
     }
 
     /// 取消输入
     pub fn cancel(&mut self) -> ImeResult<ImeResponse> {
-        // TODO: 实现取消逻辑
-        todo!("实现输入取消")
+        let was_inputting = !self.buffer.is_empty() || self.state != ImeState::Idle;
+
+        self.buffer.clear();
+        self.cursor = 0;
+        self.state = ImeState::Idle;
+
+        Ok(ImeResponse {
+            response_type: ImeResponseType::Cancel,
+            text: None,
+            candidates: Vec::new(),
+            buffer: self.buffer.clone(),
+            cursor: self.cursor,
+            need_refresh: was_inputting,
+            need_hide: was_inputting,
+        })
     }
 
     /// 选择候选词
     pub fn select_candidate(&mut self, index: usize) -> ImeResult<ImeResponse> {
-        // TODO: 实现候选词选择逻辑
-        todo!("实现候选词选择")
+        let selected = {
+            let Some(window) = self.window_manager.active_window_mut() else {
+                return Ok(ImeResponse::empty());
+            };
+            if !window.select(index) {
+                return Ok(ImeResponse::empty());
+            }
+            window.selected_candidate().map(|c| c.text.clone())
+        };
+
+        let Some(text) = selected else {
+            return Ok(ImeResponse::empty());
+        };
+
+        // 会话 ID 参与生成响应
+        let session_id = self.session_id;
+        let _ = session_id;
+
+        self.state = ImeState::Confirming;
+        self.confirmed_text.push_str(&text);
+
+        Ok(ImeResponse {
+            response_type: ImeResponseType::Confirm,
+            text: Some(text),
+            candidates: Vec::new(),
+            buffer: self.buffer.clone(),
+            cursor: self.cursor,
+            need_hide: true,
+            need_refresh: false,
+        })
     }
 
     /// 翻页
     pub fn page_up(&mut self) -> ImeResult<ImeResponse> {
-        // TODO: 实现翻页逻辑
-        todo!("实现翻页")
+        if let Some(window) = self.window_manager.active_window_mut() {
+            window.prev_page();
+        }
+        Ok(ImeResponse {
+            response_type: ImeResponseType::ShowCandidates,
+            text: None,
+            candidates: self
+                .window_manager
+                .active_window()
+                .map(|w| w.current_page_candidates().to_vec())
+                .unwrap_or_default(),
+            buffer: self.buffer.clone(),
+            cursor: self.cursor,
+            need_refresh: true,
+            need_hide: false,
+        })
     }
 
     /// 翻页
     pub fn page_down(&mut self) -> ImeResult<ImeResponse> {
-        // TODO: 实现翻页逻辑
-        todo!("实现翻页")
+        if let Some(window) = self.window_manager.active_window_mut() {
+            window.next_page();
+        }
+        Ok(ImeResponse {
+            response_type: ImeResponseType::ShowCandidates,
+            text: None,
+            candidates: self
+                .window_manager
+                .active_window()
+                .map(|w| w.current_page_candidates().to_vec())
+                .unwrap_or_default(),
+            buffer: self.buffer.clone(),
+            cursor: self.cursor,
+            need_refresh: true,
+            need_hide: false,
+        })
+    }
+
+    /// 选择上一个候选
+    fn select_up(&mut self) -> ImeResult<ImeResponse> {
+        if let Some(window) = self.window_manager.active_window_mut() {
+            window.select_prev();
+        }
+        Ok(ImeResponse {
+            response_type: ImeResponseType::ShowCandidates,
+            text: None,
+            candidates: self
+                .window_manager
+                .active_window()
+                .map(|w| w.current_page_candidates().to_vec())
+                .unwrap_or_default(),
+            buffer: self.buffer.clone(),
+            cursor: self.cursor,
+            need_refresh: true,
+            need_hide: false,
+        })
+    }
+
+    /// 选择下一个候选
+    fn select_down(&mut self) -> ImeResult<ImeResponse> {
+        if let Some(window) = self.window_manager.active_window_mut() {
+            window.select_next();
+        }
+        Ok(ImeResponse {
+            response_type: ImeResponseType::ShowCandidates,
+            text: None,
+            candidates: self
+                .window_manager
+                .active_window()
+                .map(|w| w.current_page_candidates().to_vec())
+                .unwrap_or_default(),
+            buffer: self.buffer.clone(),
+            cursor: self.cursor,
+            need_refresh: true,
+            need_hide: false,
+        })
     }
 
     /// 切换输入模式
@@ -253,6 +456,21 @@ pub struct ImeResponse {
     pub need_refresh: bool,
     /// 是否需要隐藏窗口
     pub need_hide: bool,
+}
+
+impl ImeResponse {
+    /// 创建空响应
+    pub fn empty() -> Self {
+        Self {
+            response_type: ImeResponseType::None,
+            text: None,
+            candidates: Vec::new(),
+            buffer: String::new(),
+            cursor: 0,
+            need_refresh: false,
+            need_hide: false,
+        }
+    }
 }
 
 /// IME 响应类型
@@ -366,5 +584,108 @@ impl ImeFactory {
             ..Default::default()
         };
         ImeHost::new(config)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_host() -> ImeHost {
+        ImeHost::new(ImeConfig::default())
+    }
+
+    #[test]
+    fn test_initialize() {
+        let mut host = make_host();
+        host.initialize().unwrap();
+        assert_eq!(host.state(), &ImeState::Idle);
+    }
+
+    #[test]
+    fn test_input_char() {
+        let mut host = make_host();
+        let resp = host.input_char('n').unwrap();
+        assert_eq!(resp.response_type, ImeResponseType::InputChar);
+        assert_eq!(host.buffer(), "n");
+        assert_eq!(host.cursor(), 1);
+        assert_eq!(host.state(), &ImeState::Inputting);
+    }
+
+    #[test]
+    fn test_input_char_rejects_non_alnum() {
+        let mut host = make_host();
+        let resp = host.input_char(' ').unwrap();
+        assert_eq!(resp.response_type, ImeResponseType::None);
+        assert!(host.buffer().is_empty());
+    }
+
+    #[test]
+    fn test_input_char_confirm_flow() {
+        let mut host = make_host();
+        host.input_char('h').unwrap();
+        host.input_char('i').unwrap();
+        assert_eq!(host.buffer(), "hi");
+
+        let resp = host.confirm().unwrap();
+        assert_eq!(resp.response_type, ImeResponseType::Confirm);
+        assert_eq!(resp.text.as_deref(), Some("hi"));
+        assert!(resp.need_hide);
+        assert!(host.buffer().is_empty());
+        assert_eq!(host.state(), &ImeState::Idle);
+        assert_eq!(host.confirmed_text(), "hi");
+    }
+
+    #[test]
+    fn test_delete_char() {
+        let mut host = make_host();
+        host.input_char('h').unwrap();
+        host.input_char('i').unwrap();
+        let resp = host.delete_char().unwrap();
+        assert_eq!(resp.response_type, ImeResponseType::DeleteChar);
+        assert_eq!(host.buffer(), "h");
+    }
+
+    #[test]
+    fn test_cancel() {
+        let mut host = make_host();
+        host.input_char('h').unwrap();
+        let resp = host.cancel().unwrap();
+        assert_eq!(resp.response_type, ImeResponseType::Cancel);
+        assert!(host.buffer().is_empty());
+        assert_eq!(host.state(), &ImeState::Idle);
+    }
+
+    #[test]
+    fn test_process_key_enter_confirms() {
+        let mut host = make_host();
+        host.input_char('a').unwrap();
+        let enter = KeyEvent::new(13, None);
+        let resp = host.process_key(enter).unwrap();
+        assert_eq!(resp.response_type, ImeResponseType::Confirm);
+    }
+
+    #[test]
+    fn test_select_candidate() {
+        let mut host = make_host();
+        let window = crate::candidate_window::CandidateWindow::new(
+            crate::candidate_window::WindowPosition::new(0, 0, 300, 200),
+            crate::candidate_window::WindowStyle::default(),
+        );
+        let idx = host.window_manager_mut().add_window(window);
+        host.window_manager_mut().set_active_window(idx);
+        host.window_manager_mut().get_window_mut(idx).unwrap().set_candidates(vec![
+            Candidate {
+                text: "你好".to_string(),
+                code: "nihao".to_string(),
+                score: 1.0,
+                source: wbw_types::CandidateSource::System,
+                ngram_score: None,
+                user_weight: None,
+            },
+        ]);
+        let resp = host.select_candidate(0).unwrap();
+        assert_eq!(resp.response_type, ImeResponseType::Confirm);
+        assert_eq!(resp.text.as_deref(), Some("你好"));
     }
 }

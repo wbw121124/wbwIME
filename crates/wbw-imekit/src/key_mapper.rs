@@ -179,8 +179,50 @@ impl KeyMapper {
 
     /// 获取默认映射
     fn default_mappings() -> Vec<KeyMapping> {
-        // TODO: 实现默认映射
-        todo!("实现默认按键映射")
+        vec![
+            KeyMapping {
+                from: KeyEvent::new(13, None),
+                to: KeyAction::Confirm,
+                enabled: true,
+                description: "回车确认".to_string(),
+            },
+            KeyMapping {
+                from: KeyEvent::new(8, None),
+                to: KeyAction::DeleteChar,
+                enabled: true,
+                description: "退格删除".to_string(),
+            },
+            KeyMapping {
+                from: KeyEvent::new(27, None),
+                to: KeyAction::Cancel,
+                enabled: true,
+                description: "Esc 取消".to_string(),
+            },
+            KeyMapping {
+                from: KeyEvent::new(38, None),
+                to: KeyAction::SelectUp,
+                enabled: true,
+                description: "上方向键选择上一个".to_string(),
+            },
+            KeyMapping {
+                from: KeyEvent::new(40, None),
+                to: KeyAction::SelectDown,
+                enabled: true,
+                description: "下方向键选择下一个".to_string(),
+            },
+            KeyMapping {
+                from: KeyEvent::new(33, None),
+                to: KeyAction::PageUp,
+                enabled: true,
+                description: "PageUp 上一页".to_string(),
+            },
+            KeyMapping {
+                from: KeyEvent::new(34, None),
+                to: KeyAction::PageDown,
+                enabled: true,
+                description: "PageDown 下一页".to_string(),
+            },
+        ]
     }
 
     /// 添加映射
@@ -228,14 +270,70 @@ impl KeyMapper {
 
     /// 加载映射配置
     pub fn load_config(&mut self, config: &str) -> ImeResult<()> {
-        // TODO: 实现配置加载
-        todo!("实现按键映射配置加载")
+        for line in config.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            // 简单 KV 形式：键名=动作，例如 "13=Confirm"
+            let Some((key_name, action_name)) = line.split_once('=') else {
+                return Err(ImeError::ConfigError(format!("无效的按键配置行: {}", line)));
+            };
+            let key_name = key_name.trim();
+            let action_name = action_name.trim();
+
+            let action = match action_name {
+                "Confirm" => KeyAction::Confirm,
+                "Cancel" => KeyAction::Cancel,
+                "DeleteChar" => KeyAction::DeleteChar,
+                "PageUp" => KeyAction::PageUp,
+                "PageDown" => KeyAction::PageDown,
+                "SelectUp" => KeyAction::SelectUp,
+                "SelectDown" => KeyAction::SelectDown,
+                "SwitchMode" => KeyAction::SwitchMode,
+                "TriggerFuzzy" => KeyAction::TriggerFuzzy,
+                other => {
+                    // 剩余动作按 InputChar(字符) 处理
+                    if other.len() == 1 {
+                        KeyAction::InputChar(other.chars().next().unwrap())
+                    } else {
+                        KeyAction::Other(other.to_string())
+                    }
+                }
+            };
+
+            let code = parse_key_code(key_name)?;
+            let mapping = KeyMapping {
+                from: KeyEvent::new(code, None),
+                to: action,
+                enabled: true,
+                description: format!("{}={}", key_name, action_name),
+            };
+            self.mappings.push(mapping);
+        }
+        Ok(())
     }
 
     /// 保存映射配置
     pub fn save_config(&self) -> ImeResult<String> {
-        // TODO: 实现配置保存
-        todo!("实现按键映射配置保存")
+        let mut lines = Vec::new();
+        for mapping in &self.mappings {
+            let action_name = match &mapping.to {
+                KeyAction::InputChar(ch) => ch.to_string(),
+                KeyAction::DeleteChar => "DeleteChar".to_string(),
+                KeyAction::Confirm => "Confirm".to_string(),
+                KeyAction::Cancel => "Cancel".to_string(),
+                KeyAction::PageUp => "PageUp".to_string(),
+                KeyAction::PageDown => "PageDown".to_string(),
+                KeyAction::SelectUp => "SelectUp".to_string(),
+                KeyAction::SelectDown => "SelectDown".to_string(),
+                KeyAction::SwitchMode => "SwitchMode".to_string(),
+                KeyAction::TriggerFuzzy => "TriggerFuzzy".to_string(),
+                KeyAction::Other(other) => other.clone(),
+            };
+            lines.push(format!("{}={}", mapping.from.code, action_name));
+        }
+        Ok(lines.join("\n"))
     }
 }
 
@@ -245,26 +343,70 @@ impl Default for KeyMapper {
     }
 }
 
+/// 解析按键名字为虚拟键码
+fn parse_key_code(name: &str) -> ImeResult<u32> {
+    // 支持数字键码
+    if let Ok(code) = name.parse::<u32>() {
+        return Ok(code);
+    }
+    // 支持字母键（ASCII 码）
+    let chars: Vec<char> = name.chars().collect();
+    if chars.len() == 1 && chars[0].is_ascii_alphanumeric() {
+        return Ok(chars[0] as u32);
+    }
+    // 支持常见名称
+    match name {
+        "Enter" | "RETURN" => Ok(13),
+        "Backspace" | "BACK" => Ok(8),
+        "Esc" | "ESCAPE" => Ok(27),
+        "Up" | "UP" => Ok(38),
+        "Down" | "DOWN" => Ok(40),
+        "PageUp" => Ok(33),
+        "PageDown" => Ok(34),
+        _ => Err(ImeError::ConfigError(format!("无法识别的按键: {}", name))),
+    }
+}
+
 /// 按键预设
 pub struct KeyPresets;
 
 impl KeyPresets {
     /// 获取拼音输入法预设
     pub fn pinyin_preset() -> Vec<KeyMapping> {
-        // TODO: 实现拼音输入法预设
-        todo!("实现拼音输入法按键预设")
+        ('a'..='z').map(|ch| KeyMapping {
+            from: KeyEvent::new(ch as u32, Some(ch)),
+            to: KeyAction::InputChar(ch),
+            enabled: true,
+            description: format!("拼音字母 {}", ch),
+        }).collect()
     }
 
     /// 获取五笔输入法预设
     pub fn wubi_preset() -> Vec<KeyMapping> {
-        // TODO: 实现五笔输入法预设
-        todo!("实现五笔输入法按键预设")
+        ('a'..='z').map(|ch| KeyMapping {
+            from: KeyEvent::new(ch as u32, Some(ch)),
+            to: KeyAction::InputChar(ch),
+            enabled: true,
+            description: format!("五笔字母 {}", ch),
+        }).collect()
     }
 
     /// 获取英文输入法预设
     pub fn english_preset() -> Vec<KeyMapping> {
-        // TODO: 实现英文输入法预设
-        todo!("实现英文输入法按键预设")
+        let mut mappings: Vec<KeyMapping> = ('a'..='z').map(|ch| KeyMapping {
+            from: KeyEvent::new(ch as u32, Some(ch)),
+            to: KeyAction::InputChar(ch),
+            enabled: true,
+            description: format!("英文字母 {}", ch),
+        }).collect();
+        // 空格键（VK_SPACE=32）作为输入空格
+        mappings.push(KeyMapping {
+            from: KeyEvent::new(32, Some(' ')),
+            to: KeyAction::InputChar(' '),
+            enabled: true,
+            description: "空格".to_string(),
+        });
+        mappings
     }
 }
 
@@ -315,6 +457,7 @@ impl KeyStatsCollector {
         // 更新最频繁按键
         if let Some((key_code, count)) = self.stats.key_counts.iter().max_by_key(|(_, count)| *count) {
             self.stats.most_frequent_key = Some(*key_code);
+            let _ = *count;
         }
     }
 
@@ -327,5 +470,52 @@ impl KeyStatsCollector {
 impl Default for KeyStatsCollector {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_mappings_contains_confirm() {
+        let mapper = KeyMapper::new();
+        let mappings = mapper.default_mappings_ref();
+        assert!(mappings.iter().any(|m| matches!(m.to, KeyAction::Confirm)));
+        assert!(mappings.iter().any(|m| matches!(m.to, KeyAction::DeleteChar)));
+        assert!(mappings.iter().any(|m| matches!(m.to, KeyAction::Cancel)));
+    }
+
+    #[test]
+    fn test_process_key_maps_enter() {
+        let mapper = KeyMapper::new();
+        let enter = KeyEvent::new(13, None);
+        match mapper.process_key(&enter) {
+            Some(KeyAction::Confirm) => {}
+            _ => panic!("回车应映射为 Confirm"),
+        }
+    }
+
+    #[test]
+    fn test_load_and_save_config() {
+        let mut mapper = KeyMapper::new();
+        mapper.load_config("13=Confirm\n8=DeleteChar\na=A\n").unwrap();
+        let saved = mapper.save_config().unwrap();
+        assert!(saved.contains("13=Confirm"));
+        assert!(saved.contains("8=DeleteChar"));
+    }
+
+    #[test]
+    fn test_load_config_invalid_line() {
+        let mut mapper = KeyMapper::new();
+        assert!(mapper.load_config("not-a-valid-line").is_err());
+    }
+
+    #[test]
+    fn test_pinyin_preset() {
+        let preset = KeyPresets::pinyin_preset();
+        assert_eq!(preset.len(), 26);
+        assert!(preset[0].from.code == 'a' as u32);
+        assert!(matches!(preset[0].to, KeyAction::InputChar('a')));
     }
 }
