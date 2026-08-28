@@ -1,0 +1,17 @@
+[package]
+name = "wbw-ime-native"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "wbwIME native C API — 编译为 DLL/SO 的输入法模块"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wbw-types = { path = "../wbw-types" }
+wbw-dict = { path = "../wbw-dict" }
+wbw-matcher = { path = "../wbw-matcher" }
+wbw-rank = { path = "../wbw-rank" }
+wbw-imekit = { path = "../wbw-imekit" }

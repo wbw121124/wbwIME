@@ -718,6 +718,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "wbw-ime-native"
+version = "0.1.0"
+dependencies = [
+ "wbw-dict",
+ "wbw-imekit",
+ "wbw-matcher",
+ "wbw-rank",
+ "wbw-types",
+]
+
+[[package]]
 name = "wbw-imekit"
 version = "0.1.0"
 dependencies = [

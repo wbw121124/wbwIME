@@ -8,6 +8,7 @@ members = [
     "crates/wbw-rank",
     "crates/wbw-ngram",
     "crates/wbw-imekit",
+    "crates/wbw-ime-native",
     "crates/wbw-cli",
 ]
 

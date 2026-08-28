@@ -67,6 +67,24 @@ if (-not (Test-Path $binSrc)) {
 }
 Copy-Item $binSrc $stagingDir
 
+# 复制 IME 模块 (DLL)
+$dllSrc = Join-Path $ProjectRoot "$targetDir/wbw_ime_native.dll"
+if (Test-Path $dllSrc) {
+    Copy-Item $dllSrc $stagingDir
+    Write-Host "  已包含: wbw_ime_native.dll"
+} else {
+    Write-Host "  警告: 未找到 DLL: $dllSrc" -ForegroundColor DarkYellow
+}
+
+# 复制 C 头文件
+$headerSrc = Join-Path $ProjectRoot "crates/wbw-ime-native/include/wbw_ime_native.h"
+if (Test-Path $headerSrc) {
+    $includeDir = Join-Path $stagingDir "include"
+    New-Item -ItemType Directory -Path $includeDir -Force | Out-Null
+    Copy-Item $headerSrc $includeDir
+    Write-Host "  已包含: include/wbw_ime_native.h"
+}
+
 # 复制词典资源
 $dictsSrc = Join-Path $ProjectRoot "resources/dicts"
 if (Test-Path $dictsSrc) {

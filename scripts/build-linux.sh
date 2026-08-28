@@ -63,6 +63,23 @@ fi
 cp "$BINARY" "$STAGING_DIR/"
 chmod +x "$STAGING_DIR/wbwime"
 
+# 复制 IME 模块 (.so)
+SO_FILE="$TARGET_DIR/libwbw_ime_native.so"
+if [ -f "$SO_FILE" ]; then
+    cp "$SO_FILE" "$STAGING_DIR/"
+    echo "  已包含: libwbw_ime_native.so"
+else
+    echo "  警告: 未找到 .so: $SO_FILE" >&2
+fi
+
+# 复制 C 头文件
+HEADER="$PROJECT_ROOT/crates/wbw-ime-native/include/wbw_ime_native.h"
+if [ -f "$HEADER" ]; then
+    mkdir -p "$STAGING_DIR/include"
+    cp "$HEADER" "$STAGING_DIR/include/"
+    echo "  已包含: include/wbw_ime_native.h"
+fi
+
 # 复制词典资源
 if [ -d "$PROJECT_ROOT/resources/dicts" ]; then
     cp -r "$PROJECT_ROOT/resources/dicts" "$STAGING_DIR/"
