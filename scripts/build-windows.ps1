@@ -116,6 +116,18 @@ if (Test-Path $readmeSrc) { Copy-Item $readmeSrc $stagingDir }
 $licenseSrc = Join-Path $ProjectRoot "LICENSE"
 if (Test-Path $licenseSrc) { Copy-Item $licenseSrc $stagingDir }
 
+# 复制安装/卸载脚本
+$installSrc = Join-Path $ProjectRoot "scripts/install.ps1"
+if (Test-Path $installSrc) {
+    Copy-Item $installSrc $stagingDir
+    Write-Host "  已包含: install.ps1"
+}
+$uninstallSrc = Join-Path $ProjectRoot "scripts/uninstall.ps1"
+if (Test-Path $uninstallSrc) {
+    Copy-Item $uninstallSrc $stagingDir
+    Write-Host "  已包含: uninstall.ps1"
+}
+
 # 压缩为 zip
 $version = (Get-Content (Join-Path $ProjectRoot "Cargo.toml") | Select-String 'version\s*=\s*"(.+)"').Matches[0].Groups[1].Value
 $zipName = "wbwime-windows-x86_64-v${version}.zip"
