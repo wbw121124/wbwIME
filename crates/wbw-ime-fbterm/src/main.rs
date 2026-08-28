@@ -10,8 +10,6 @@ use std::ffi::CString;
 use std::io::{Read, Write};
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
-#[cfg(unix)]
-use std::path::Path;
 use std::process;
 
 #[cfg(unix)]
@@ -91,7 +89,7 @@ struct FbtermIme {
 #[cfg(unix)]
 impl FbtermIme {
     fn new(dict_path: &str) -> Self {
-        let path = Path::new(dict_path);
+        let path = std::path::Path::new(dict_path);
         let dict = if path.extension().and_then(|e| e.to_str()) == Some("fst") {
             FstDict::from_file(path).expect("无法加载 .fst 词典")
         } else {
@@ -124,67 +122,71 @@ impl FbtermIme {
     fn process_key(&mut self, keys: &[u8]) -> Option<String> {
         let &key = keys.first()?;
         match key {
-                0x0d | 0x0a => {
-                    if !self.buffer.is_empty() && !self.candidates.is_empty() {
-                        let text = self.candidates[self.selected_index].text.clone();
-                        self.buffer.clear();
-                        self.candidates.clear();
-                        self.selected_index = 0;
-                        return Some(text);
-                    }
-                    return None;
-                }
-                0x08 | 0x7f => {
-                    if !self.buffer.is_empty() {
-                        self.buffer.pop();
-                        self.update_candidates();
-                    }
-                    return None;
-                }
-                0x1b => {
+            0x0d | 0x0a => {
+                if !self.buffer.is_empty() && !self.candidates.is_empty() {
+                    let text = self.candidates[self.selected_index].text.clone();
                     self.buffer.clear();
                     self.candidates.clear();
                     self.selected_index = 0;
-                    return None;
+                    Some(text)
+                } else {
+                    None
                 }
-                0x20 => {
-                    if !self.buffer.is_empty() && !self.candidates.is_empty() {
-                        let text = self.candidates[0].text.clone();
-                        self.buffer.clear();
-                        self.candidates.clear();
-                        self.selected_index = 0;
-                        return Some(text);
-                    }
-                    return None;
-                }
-                b'1'..=b'9' => {
-                    let idx = (key - b'1') as usize;
-                    if !self.buffer.is_empty() && idx < self.candidates.len() {
-                        let text = self.candidates[idx].text.clone();
-                        self.buffer.clear();
-                        self.candidates.clear();
-                        self.selected_index = 0;
-                        return Some(text);
-                    }
-                    return None;
-                }
-                b'0' => {
-                    if !self.buffer.is_empty() && self.candidates.len() > 9 {
-                        let text = self.candidates[9].text.clone();
-                        self.buffer.clear();
-                        self.candidates.clear();
-                        self.selected_index = 0;
-                        return Some(text);
-                    }
-                    return None;
-                }
-                b'a'..=b'z' | b'A'..=b'Z' => {
-                    self.buffer.push(key as char);
-                    self.update_candidates();
-                    return None;
-                }
-                _ => return None,
             }
+            0x08 | 0x7f => {
+                if !self.buffer.is_empty() {
+                    self.buffer.pop();
+                    self.update_candidates();
+                }
+                None
+            }
+            0x1b => {
+                self.buffer.clear();
+                self.candidates.clear();
+                self.selected_index = 0;
+                None
+            }
+            0x20 => {
+                if !self.buffer.is_empty() && !self.candidates.is_empty() {
+                    let text = self.candidates[0].text.clone();
+                    self.buffer.clear();
+                    self.candidates.clear();
+                    self.selected_index = 0;
+                    Some(text)
+                } else {
+                    None
+                }
+            }
+            b'1'..=b'9' => {
+                let idx = (key - b'1') as usize;
+                if !self.buffer.is_empty() && idx < self.candidates.len() {
+                    let text = self.candidates[idx].text.clone();
+                    self.buffer.clear();
+                    self.candidates.clear();
+                    self.selected_index = 0;
+                    Some(text)
+                } else {
+                    None
+                }
+            }
+            b'0' => {
+                if !self.buffer.is_empty() && self.candidates.len() > 9 {
+                    let text = self.candidates[9].text.clone();
+                    self.buffer.clear();
+                    self.candidates.clear();
+                    self.selected_index = 0;
+                    Some(text)
+                } else {
+                    None
+                }
+            }
+            b'a'..=b'z' | b'A'..=b'Z' => {
+                self.buffer.push(key as char);
+                self.update_candidates();
+                None
+            }
+            _ => None,
+        }
     }
 
     fn update_candidates(&mut self) {
@@ -203,26 +205,6 @@ impl FbtermIme {
         let matched = self.matcher.match_input(&ctx);
         self.candidates = self.ranker.rank(matched);
         self.selected_index = 0;
-    }
-
-    #[cfg(unix)]
-    fn preedit_text(&self) -> String {
-        self.buffer.clone()
-    }
-
-    #[cfg(unix)]
-    fn candidate_text(&self) -> String {
-        if self.candidates.is_empty() {
-            return String::new();
-        }
-        let mut text = String::new();
-        for (i, c) in self.candidates.iter().take(10).enumerate() {
-            if i > 0 {
-                text.push(' ');
-            }
-            text.push_str(&format!("{}:{}", i + 1, c.text));
-        }
-        text
     }
 }
 
@@ -296,10 +278,7 @@ fn put_text(stream: &mut UnixStream, text: &str) -> std::io::Result<()> {
 #[cfg(unix)]
 fn set_wins(stream: &mut UnixStream, wins: &[ImWin]) -> std::io::Result<()> {
     let payload = unsafe {
-        std::slice::from_raw_parts(
-            wins.as_ptr() as *const u8,
-            wins.len() * std::mem::size_of::<ImWin>(),
-        )
+        std::slice::from_raw_parts(wins.as_ptr() as *const u8, std::mem::size_of_val(wins))
     };
     send_message(stream, MsgType::SetWins, payload)
 }
