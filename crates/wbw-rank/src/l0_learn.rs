@@ -83,7 +83,9 @@ impl L0Learner {
     /// 检查是否达到学习阈值
     pub fn should_learn(&self, code: &str, word: &str) -> bool {
         let key = format!("{}:{}", code, word);
-        self.counters.get(&key).map_or(false, |&count| count >= self.config.threshold)
+        self.counters
+            .get(&key)
+            .is_some_and(|&count| count >= self.config.threshold)
     }
 
     /// 获取学习建议
@@ -93,8 +95,8 @@ impl L0Learner {
             .filter(|(_, &count)| count >= self.config.threshold)
             .map(|(key, &count)| {
                 let parts: Vec<&str> = key.split(':').collect();
-                let code = parts.get(0).unwrap_or(&"").to_string();
-                let word = parts.get(1).unwrap_or(&"").to_string();
+                let code = parts.first().copied().unwrap_or("").to_string();
+                let word = parts.get(1).copied().unwrap_or("").to_string();
                 let confidence = (count as f64 / (self.config.threshold as f64 * 2.0)).min(1.0);
                 LearningSuggestion {
                     code,
@@ -121,7 +123,7 @@ impl L0Learner {
             .filter_map(|(key, &count)| {
                 if count >= self.config.threshold {
                     let parts: Vec<&str> = key.split(':').collect();
-                    let code = parts.get(0)?.to_string();
+                    let code = parts.first()?.to_string();
                     let word = parts.get(1)?.to_string();
                     Some((code, word, count))
                 } else {

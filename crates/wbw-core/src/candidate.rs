@@ -218,7 +218,7 @@ impl CandidateFilter {
     }
 
     /// 排序（按分数降序）
-    pub fn sort_by_score(candidates: &mut Vec<Candidate>) {
+    pub fn sort_by_score(candidates: &mut [Candidate]) {
         candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     }
 }

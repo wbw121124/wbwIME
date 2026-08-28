@@ -99,7 +99,7 @@ impl PinyinSyllable {
     }
 
     /// 从字符串解析（仅接受小写字母）
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         let s = s.trim().to_lowercase();
         if s.is_empty() {
             return None;
@@ -107,8 +107,7 @@ impl PinyinSyllable {
 
         // 尝试匹配声母（优先匹配长声母）
         for initial in INITIALS {
-            if s.starts_with(initial) {
-                let rest = &s[initial.len()..];
+            if let Some(rest) = s.strip_prefix(initial) {
                 if !rest.is_empty() && FINALS.contains(&rest) {
                     return Some(Self::new(
                         Some(initial.to_string()),
@@ -176,7 +175,7 @@ impl PinyinString {
             let max_len = std::cmp::min(6, len - pos);
             for seg_len in (1..=max_len).rev() {
                 let segment: String = chars[pos..pos + seg_len].iter().collect();
-                if let Some(syllable) = PinyinSyllable::from_str(&segment) {
+                if let Some(syllable) = PinyinSyllable::parse(&segment) {
                     syllables.push(syllable);
                     pos += seg_len;
                     matched = true;
@@ -361,10 +360,8 @@ impl PinyinValidator {
         let max_len = std::cmp::min(6, s.len());
         for len in (1..=max_len).rev() {
             if let Some(prefix) = s.get(..len) {
-                if VALID_SYLLABLES.contains(&prefix) {
-                    if Self::can_split_into_syllables(&s[len..]) {
-                        return true;
-                    }
+                if VALID_SYLLABLES.contains(&prefix) && Self::can_split_into_syllables(&s[len..]) {
+                    return true;
                 }
             }
         }
@@ -377,21 +374,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_pinyin_syllable_from_str() {
-        assert!(PinyinSyllable::from_str("ba").is_some());
-        assert!(PinyinSyllable::from_str("zhong").is_some());
-        assert!(PinyinSyllable::from_str("shi").is_some());
-        assert!(PinyinSyllable::from_str("xyz").is_none());
+    fn test_pinyin_syllable_parse() {
+        assert!(PinyinSyllable::parse("ba").is_some());
+        assert!(PinyinSyllable::parse("zhong").is_some());
+        assert!(PinyinSyllable::parse("shi").is_some());
+        assert!(PinyinSyllable::parse("xyz").is_none());
     }
 
     #[test]
     fn test_pinyin_syllable_components() {
-        let s = PinyinSyllable::from_str("zhong").unwrap();
+        let s = PinyinSyllable::parse("zhong").unwrap();
         assert_eq!(s.initial, Some("zh".to_string()));
         assert_eq!(s.final_, "ong");
         assert_eq!(s.full, "zhong");
 
-        let s = PinyinSyllable::from_str("a").unwrap();
+        let s = PinyinSyllable::parse("a").unwrap();
         assert_eq!(s.initial, None);
         assert_eq!(s.final_, "a");
     }

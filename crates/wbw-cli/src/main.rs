@@ -414,7 +414,7 @@ fn run_query(code: &str) -> CliResult<()> {
 }
 
 /// 执行测试匹配
-fn run_test_match(code: &str, dict_path: &PathBuf) -> CliResult<()> {
+fn run_test_match(code: &str, dict_path: &Path) -> CliResult<()> {
     let config = load_config();
     let dict = build_fst(dict_path)?;
     println!("词典加载成功: {} 条目", dict.entry_count());
@@ -457,7 +457,7 @@ fn run_test_match(code: &str, dict_path: &PathBuf) -> CliResult<()> {
 }
 
 /// 构建 FST 词典（内存构建并验证，当前版本 FST 为内存哈希实现，尚不支持二进制持久化）
-fn run_build_dict(dict_path: &PathBuf, _out_path: &PathBuf) -> CliResult<()> {
+fn run_build_dict(dict_path: &Path, _out_path: &Path) -> CliResult<()> {
     let dict = build_fst(dict_path)?;
 
     println!("词典构建完成:");
@@ -473,7 +473,7 @@ fn run_build_dict(dict_path: &PathBuf, _out_path: &PathBuf) -> CliResult<()> {
 }
 
 /// 验证 .cin 码表
-fn run_validate(dict_path: &PathBuf) -> CliResult<()> {
+fn run_validate(dict_path: &Path) -> CliResult<()> {
     if !dict_path.exists() {
         return Err(CliError::DictError(format!(
             "词典文件不存在: {}",

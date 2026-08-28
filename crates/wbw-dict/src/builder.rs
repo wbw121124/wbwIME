@@ -48,10 +48,8 @@ impl DictBuilder {
 
     /// 添加词条
     pub fn add_entry(&mut self, entry: DictEntry) {
-        if entry.freq >= self.config.min_freq {
-            if entry.word.len() <= self.config.max_word_len {
-                self.entries.push(entry);
-            }
+        if entry.freq >= self.config.min_freq && entry.word.len() <= self.config.max_word_len {
+            self.entries.push(entry);
         }
     }
 

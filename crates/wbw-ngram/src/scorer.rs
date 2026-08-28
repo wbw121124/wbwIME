@@ -83,7 +83,7 @@ impl NgramScorer {
         let mut total_log_prob = 0.0;
 
         for i in 0..words.len() {
-            let start = if i >= order - 1 { i - (order - 1) } else { 0 };
+            let start = i.saturating_sub(order - 1);
             let context = &words[start..i];
             let prob = table.conditional_probability(context, words[i]);
             let prob = prob.max(self.config.min_prob);

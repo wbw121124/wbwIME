@@ -172,10 +172,13 @@ pub enum ContextEvent {
     Undo,
 }
 
+/// 上下文事件处理函数类型
+type ContextEventHandlerFn = Box<dyn FnMut(&mut ContextManager, ContextEvent) -> ImeResult<()>>;
+
 /// 上下文事件处理器
 pub struct ContextEventHandler {
     /// 处理器函数
-    handler: Box<dyn FnMut(&mut ContextManager, ContextEvent) -> ImeResult<()>>,
+    handler: ContextEventHandlerFn,
 }
 
 impl ContextEventHandler {

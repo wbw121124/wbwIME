@@ -128,7 +128,7 @@ impl ErrorRecovery {
         match strategy {
             RecoveryStrategy::Retry => {
                 // 重试一次：调用 fallback() 进行重试（F 为 FnOnce，只能调用一次）
-                fallback().or_else(|_| Err(error.clone()))
+                fallback().map_err(|_| error.clone())
             }
             RecoveryStrategy::Fallback => fallback(),
             RecoveryStrategy::Ignore => {

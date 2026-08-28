@@ -3,6 +3,7 @@
 //! 提供基于哈希表的内存词典，支持精确查询和前缀查询。
 //! 后续可替换为 FST（有限状态转换器）实现以获得更优的内存和查询性能。
 
+use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::path::Path;
 use thiserror::Error;
@@ -50,9 +51,7 @@ impl FstDict {
 
         for entry in entries {
             total += 1;
-            map.entry(entry.code.clone())
-                .or_insert_with(Vec::new)
-                .push(entry);
+            map.entry(entry.code.clone()).or_default().push(entry);
         }
 
         Self {
@@ -79,7 +78,7 @@ impl FstDict {
             }
         }
         // 按词频降序排序
-        result.sort_by(|a, b| b.freq.cmp(&a.freq));
+        result.sort_by_key(|e| Reverse(e.freq));
         result
     }
 
@@ -140,7 +139,7 @@ impl FstDict {
             .flatten()
             .map(|e| (e.word.clone(), e.freq))
             .collect();
-        all_words.sort_by(|a, b| b.1.cmp(&a.1));
+        all_words.sort_by_key(|w| Reverse(w.1));
         all_words.truncate(10);
 
         DictStats {
@@ -154,7 +153,7 @@ impl FstDict {
     /// 合并另一个词典（去重）
     pub fn merge(&mut self, other: &FstDict) {
         for (code, entries) in &other.entries {
-            let target = self.entries.entry(code.clone()).or_insert_with(Vec::new);
+            let target = self.entries.entry(code.clone()).or_default();
             for entry in entries {
                 // 检查是否已存在相同词条
                 if !target.iter().any(|e| e.word == entry.word) {
@@ -233,11 +232,11 @@ fn edit_distance(s1: &str, s2: &str) -> usize {
 
     let mut dp = vec![vec![0usize; n + 1]; m + 1];
 
-    for i in 0..=m {
-        dp[i][0] = i;
+    for (i, row) in dp.iter_mut().enumerate() {
+        row[0] = i;
     }
-    for j in 0..=n {
-        dp[0][j] = j;
+    for (j, cell) in dp[0].iter_mut().enumerate() {
+        *cell = j;
     }
 
     for i in 1..=m {

@@ -172,7 +172,7 @@ impl WeightTuner {
         indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // 期望顺序中的前 N 个（N 为期望顺序长度）
-        let expected: Vec<usize> = expected_order.iter().cloned().collect();
+        let expected: Vec<usize> = expected_order.to_vec();
         let limit = expected.len().min(indexed.len());
         let actual: Vec<usize> = indexed.iter().take(limit).map(|(idx, _)| *idx).collect();
 
@@ -433,7 +433,7 @@ mod tests {
         let expected = vec![0, 1, 2];
         let (config, accuracy) =
             WeightTuner::grid_search(&candidates, &expected, &WeightRanges::default()).unwrap();
-        assert!(accuracy >= 0.0 && accuracy <= 1.0);
+        assert!((0.0..=1.0).contains(&accuracy));
         assert!(config.max_candidates >= 1);
     }
 
@@ -442,7 +442,7 @@ mod tests {
         let candidates = test_candidates();
         let expected = vec![0, 1, 2];
         let (_, accuracy) = WeightTuner::random_search(&candidates, &expected, 100).unwrap();
-        assert!(accuracy >= 0.0 && accuracy <= 1.0);
+        assert!((0.0..=1.0).contains(&accuracy));
     }
 
     #[test]
@@ -451,6 +451,6 @@ mod tests {
         let expected = vec![0, 1, 2];
         let (_, accuracy) =
             WeightTuner::simulated_annealing(&candidates, &expected, 100.0, 0.99, 200).unwrap();
-        assert!(accuracy >= 0.0 && accuracy <= 1.0);
+        assert!((0.0..=1.0).contains(&accuracy));
     }
 }
