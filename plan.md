@@ -1,79 +1,178 @@
-# wbwIME 更新计划
+# wbwIME Windows TSF 输入法计划
 
-按已确认顺序执行：**bug → 重构 → 测试 → FST**。死代码「重新接线」而非删除。
+## 当前状态
 
-决策确认：
-- FST 持久化：真 FST + 二进制快照（fst crate）
-- 死代码：重新接线（保留能力）而非删除
-- 顺序：bug → 重构 → 测试 → FST
-- FST 定位：作为唯一数据源（替换运行态 HashMap），模糊采用 fst Levenshtein automaton
+### 已完成
+- 词典/FST/匹配/排序/N-gram/CLI — 全部完成，137+ 测试通过
+- wbw-ime-native C API cdylib
+- wbw-ime-fbterm Linux fbterm IM 服务端
+- scripts/install.ps1 / uninstall.ps1 一键安装/卸载
+- CI 全绿
 
-## 阶段 1：修 Bug（优先，风险最高）
+### 进行中（暂停）
+- wbw-ime-tsf — Windows TSF 输入法 DLL（编译未通过，暂停）
+  - 原因：`windows 0.59` crate 的 `ITfKeystrokeMgr::AdviseKeyEventSink` 签名需要 `Param<ITfKeyEventSink>`，无法直接传手动 vtable 指针
+  - 下次继续时选择方案A（windows-sys 纯手写）或方案B（IMM32）
 
-1. **候选去重全局化** — `crates/wbw-matcher/src/matcher.rs:153`
-   - 现 `dedup_by` 排序后只去相邻重复，相同词不同分数（如「最大流」200/100）两侧夹着别的词导致去重失效。
-   - 改为先按 text 分组求最高分（或先 sort 后 `retain(HashSet<text>)` 保留首个=最高分），与 CLI 路径（`main.rs:394`、`:452`）行为统一。
-2. **缓存一致性** — `crates/wbw-matcher/src/matcher.rs:97`
-   - `load_cin`/`load_dict` 重新加载词典后调用 `clear_cache()`，避免旧词典缓存污染。
-3. **可触发崩溃的风险点**：
-   - `matcher.rs:52,66` / `ranker.rs:200`：`cache_size==0` 时 `NonZeroUsize::unwrap()` panic → 回退为禁用缓存（None）或 clamp 到 1。
-   - `fuzzy.rs:140`：`input[search_pos..]` 字节切片可能在多字节字符内 panic → 用字符安全遍历（`char_indices`）修 `generate_variants`（同时修掉替换错位 bug）。
-   - `candidate.rs:44`：`current_page` 越界切片 → 加 start/end 边界守卫。
-   - `main.rs:329`：`read_line().unwrap()` → 匹配 Result。
-4. **翻页重置** — `candidate_window.rs:152-155`：`update_candidates` 同时重置 `selected_index` 与 `page=0`，避免少页时 `select_next` 卡死。
+## 参考项目研究
 
-## 阶段 2：重构（去死代码 by 重新接线）
+### 1. Microsoft SampleIME (C++)
+- 完整 TSF TIP 实现，5000+ 行 C++
+- 所有 COM 接口手动 vtable 定义
+- 包含: ITfTextInputProcessorEx, ITfKeyEventSink, ITfThreadMgrEventSink, ITfDisplayAttributeProvider 等
 
-1. **FuzzyMatcher 重新接线** — `matcher.rs` + `fuzzy.rs`
-   - 把 `fuzzy_matcher: FuzzyMatcher` 字段重新加回 `Matcher`。
-   - `fuzzy_lookup` 改为：编辑距离结果（`dict.fuzzy_lookup`）+ 规则变体结果（`generate_variants` 后 `dict.lookup`）合并。
-   - 修复 `generate_variants` 字节偏移 bug（fuzzy.rs:171 `replace_range` 用字符索引），使 `ei→ie`/`ui→iu`（编辑距离 2，编辑距离引擎覆盖不到）由规则引擎补足。
-   - 合并重复的 `edit_distance`（fuzzy.rs:185 与 fst_dict.rs:227 两份）。
-2. **unused 依赖清理**（保留将接线的）：
-   - 删除全工作区未用 `anyhow`（7 crates）、`phf`、未接线 `tempfile`；`wbw-matcher` 移除 `thiserror`。
-   - `wbw-cli` 的 `wbw-core`/`wbw-ngram` 移到 dev-dependencies（仅集成测试用）。
-   - 根 `Cargo.toml` 移除 `inputx-ngram`、`perfgate`（`criterion` 保留用于阶段 3）。
-   - **保留** `fst`/`memmap2`（阶段 4 接入）、`serde`（快照用）。
-3. **Ranker 死字段清理** — `ranker.rs:17` cache 与 `:69-70` 无效归一化：按「重新接线」方针把 cache 真正用于 rank 缓存，删除无效归一化代码。
-4. **命名整改留待阶段 4**：`FstDict::from_file` 空实现 + `build-dict` 哑输出。
+### 2. imekit (Rust)
+- 仓库: https://github.com/SergioRibera/imekit
+- **关键发现**: `windows 0.59` + `windows-core 0.59` 的 `#[implement]` 宏可以实现 COM 接口
+- 但 imekit 是**应用端**（调用 TSF 插入文本），不是 DLL 端
+- 使用 `ITfInsertAtSelection` + `ITfEditSession` + `ITfContextComposition` 做文本输出
+- 剪贴板 + `SendInput` 作为回退方案
 
-## 阶段 3：补测试 / 基准（criterion）
+### 3. afrim (Rust)
+- 仓库: https://github.com/fodydev/afrim
+- 架构分层: engine (preprocessor + translator) / memory / config / service
+- TSF 前端在单独的 `afrim-wish` crate（用 Tcl/Tk GUI）
+- 不直接实现 TSF DLL，而是独立应用 + 前端
 
-1. **根 benchmark 改造**：`benches/benchmark.rs` 现为 12 个 `todo!()` 且不属于任何 crate 的 `[[bench]]`（不会被编译）。
-   - 移入 `crates/wbw-dict/benches/`（或用 `[[bench]]` 目标），实现 `bench_dict_load`、`bench_fuzzy_match`、`bench_candidate_ranking` 等核心基准（用 `resources/dicts/cs-oi.cin` 真实数据）。
-   - `bench_fuzzy_match` 作为阶段 4 FST/编辑距离优化前后的对比基准。
-2. **补集成测试**：覆盖 bug 修复（去重、缓存 reload、FuzzyMatcher 对调规则 `ei→ie` 接线），加快照 round-trip 测试（阶段 4 后）。
-3. 维持 `cargo test --workspace` 与 `cargo clippy --workspace --all-targets -- -D warnings` 全绿。
+### 4. weasel/小狼毫 (C++)
+- 基于 librime 的 TSF 实现
+- 完整的候选窗口、合成、显示属性
 
-## 阶段 4：真 FST + 二进制快照（最后、工作量最大）
+## TSF DLL 技术方案
 
-1. **接入 `fst::Map`** — `crates/wbw-dict/src/fst_dict.rs`
-   - 数据模型：key = `code + '\u{0001}' + word`（0x01 分隔，code/word 不含控制字符），value = `freq`（u64）。
-   - 构建：收集全部 `(code,word,freq)` 排序后用 `fst::MapBuilder` 写入。
-   - 查询：
-     - 精确：`map.get(code ^ word)` → 词条。
-     - 前缀：`map.range().ge(code)` 流式取码 `code` 开头的所有键，解析回 `(code,word,freq)` 列表，替换 HashMap 线性扫描。
-     - 模糊：用 `fst::automaton::Levenshtein::new(code, max)` 做 automaton 编辑距离搜索，替代当前 O(m·n) 全表 DP。
-   - 多词同码自然展开为多个 key，`lookup(code)`/`prefix_lookup` 合并返回。
-2. **二进制快照**：
-   - `FstDict::to_bytes()`（`Map::into_bytes`）与 `from_bytes()/from_file()`（`Map::new(reader)`，支持 `memmap2` 映射只读加载）。
-   - `build-dict <dict> <out>` 真正写 `.fst` 文件；新增 CLI 支持从 `.fst` 直接加载运行（query/test-match 可不经 .cin 即时构建）。
-   - FST 作为唯一数据源替换运行态 HashMap。
-3. **验证**：字典 round-trip 测试（构建→写→读→相等）、前缀/模糊查询结果与现状一致，跑基准对比性能。
+### 架构决策
 
-## 提交策略
+**方案 A: 混合 vtable（当前方案）**
+- TIP 生命周期（ITfTextInputProcessorEx）→ 手动 vtable（windows crate 没有 TIP 接口）
+- 文本输出 → windows crate 的 ITfInsertAtSelection / ITfContextComposition
+- COM 基础设施 → windows crate 的 IClassFactory
 
-沿用现有约定，每个逻辑变更 `git commit`（中文信息）：
-- `[FIX] 修复候选去重、缓存一致性、崩溃风险`（阶段 1）
-- `[REFACTOR] 重新接线 FuzzyMatcher、清理未用依赖`（阶段 2）
-- `[TEST] 补基准与集成测试`（阶段 3）
-- `[FEAT] 接入 fst 实现 FST 词典与二进制快照`（阶段 4）
+**方案 B: 全手动 vtable（Microsoft SampleIME 风格）**
+- 所有 COM 接口都手动定义 vtable
+- 更可控，但代码量大
 
-## 环境备忘
+**方案 C: 用 afrim 的 service 架构**
+- 将输入法引擎作为独立 service
+- TSF DLL 只做 IPC 通信
+- 更模块化，但架构复杂
 
-- Windows + PowerShell；rustup gnu 工具链在 `C:\Users\yl\.cargo\bin`，需 prepend PATH 到每条命令。
-- `$env:CARGO_INCREMENTAL="0"` 规避环境错误。
-- 验证命令：
-  - `cargo test --workspace`
-  - `cargo clippy --workspace --all-targets -- -D warnings`
-- `resources/dicts/cs-oi.cin` 用户可能编辑，勿随意 stage。
+### 选择方案 A（混合 vtable）
+
+#### 需要实现的接口
+
+| 接口 | 用途 | 实现方式 |
+|------|------|----------|
+| IClassFactory | COM 类工厂 | windows crate `#[implement]` |
+| ITfTextInputProcessorEx | TIP 主接口 | 手动 vtable |
+| ITfKeyEventSink | 按键事件 | 手动 vtable |
+| ITfThreadMgrEventSink | 线程管理事件 | 手动 vtable（可选） |
+| ITfCompositionSink | 合成生命周期 | 手动 vtable（可选） |
+| ITfDisplayAttributeProvider | 显示属性 | 手动 vtable（可选） |
+
+#### 核心流程
+
+```
+DllMain (DLL_PROCESS_ATTACH)
+  └─ 加载词典到 IME_STATE
+
+DllGetClassObject (CLSID_WBW_IME)
+  └─ 返回 IClassFactory
+
+IClassFactory::CreateInstance (ITfTextInputProcessorEx)
+  └─ 返回 TextServiceCOM
+
+ITfTextInputProcessorEx::Activate (ITfThreadMgr)
+  ├─ 获取 client_id
+  ├─ 注册 ITfKeyEventSink (AdviseKeyEventSink)
+  └─ 存储 thread_mgr 引用
+
+ITfKeyEventSink::OnTestKeyDown / OnKeyDown
+  ├─ 检查按键是否需要处理
+  ├─ 调用 ImeState::process_key
+  ├─ 候选词匹配
+  └─ 输出文本（剪贴板 + SendInput）
+
+ITfTextInputProcessorEx::Deactivate
+  ├─ 取消注册 ITfKeyEventSink
+  ├─ 释放 thread_mgr
+  └─ 清理状态
+```
+
+#### 注册表配置
+
+```
+HKLM\SYSTEM\CurrentControlSet\Control\Keyboard Layouts\E0200804
+  ├─ Ime File = "C:\path\to\wbw_ime_tsf.dll"
+  ├─ Layout Text = "wbwIME"
+  └─ Language Id = 0x0804
+
+HKLM\SOFTWARE\Microsoft\CTF\TIP\{CLSID}\LanguageProfile\0x0804\{CLSID}
+  ├─ Description = "wbwIME Pinyin Input Method"
+  └─ Enable = 1
+```
+
+## 下一步
+
+### Phase 1: 编译通过
+1. ~~重写 Cargo.toml 使用 windows 0.59 + windows-core 0.59~~
+2. ~~重写 lib.rs（DLL 导出 + 全局状态）~~
+3. ~~重写 text_service.rs（TIP vtable）~~
+4. ~~重写 output.rs（剪贴板输出）~~
+5. **修复编译错误**（当前 5 个错误）
+   - `Interface::IID` → 定义 `IID_IUNKNOWN` 常量
+   - `AdviseEventSink` → `AdviseKeyEventSink`，参数签名不同
+   - `SetClipboardData` 的 HANDLE 类型转换
+   - `IClassFactory.query_interface` 方法不存在
+   - `RegCreateKeyW` 参数类型
+
+### Phase 2: 基本功能
+1. 编译通过
+2. clippy 无警告
+3. regsvr32 注册成功
+4. Windows 设置中出现输入法
+5. 基本按键处理（A-Z 输入，空格选词）
+
+### Phase 3: TSF 直接输出
+1. 实现 ITfInsertAtSelection 文本插入
+2. 实现 ITfContextComposition 合成显示
+3. 候选窗口跟随光标
+
+### Phase 4: 完善
+1. ITfDisplayAttributeProvider（合成文本样式）
+2. ITfThreadMgrEventSink（焦点跟踪）
+3. ITfActiveLanguageProfileNotifySink（语言切换）
+4. 候选窗口 UI（自绘或系统候选）
+
+## 文件结构
+
+```
+crates/wbw-ime-tsf/
+├── Cargo.toml          # windows 0.59 + windows-core 0.59
+├── src/
+│   ├── lib.rs          # DLL 导出 + 全局状态
+│   ├── text_service.rs # TIP vtable + DllGetClassObject + 注册
+│   └── output.rs       # 剪贴板 + SendInput 输出
+```
+
+## 关键依赖
+
+```toml
+windows = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Registry",
+    "Win32_System_Memory",
+    "Win32_System_DataExchange",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_TextServices",
+] }
+windows-core = "0.59"  # for #[implement] macro
+```
+
+## 待解决的问题
+
+1. **AdviseKeyEventSink 签名**: windows 0.59 的 `ITfKeystrokeMgr::AdviseKeyEventSink` 接受 `P1: Param<ITfKeyEventSink>`，不能直接传 `*mut c_void`
+2. **ITfThreadMgr::Activate**: 返回 `Result<u32>`，需要确认 client_id 用途
+3. **剪贴板输出延迟**: 50ms sleep + Ctrl+V 可能不够可靠
+4. **多线程安全**: IME_STATE 用 Mutex，TSF 可能在不同线程调用

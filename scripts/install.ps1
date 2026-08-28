@@ -156,12 +156,21 @@ if (Test-Path $tsfDllPath) {
     }
     Set-ItemProperty -Path $tipKey -Name "Description" -Value "wbwIME" -Force
 
-    $langProfileKey = "$tipKey\LanguageProfile\0x00000804\{00000000-0000-0000-0000-000000000000}"
+    $langProfileKey = "$tipKey\LanguageProfile\0x00000804\$clsid"
     if (-not (Test-Path $langProfileKey)) {
         New-Item -Path $langProfileKey -Force | Out-Null
     }
     Set-ItemProperty -Path $langProfileKey -Name "Description" -Value "wbwIME" -Force
     Set-ItemProperty -Path $langProfileKey -Name "Display Description" -Value "wbwIME" -Force
+    Set-ItemProperty -Path $langProfileKey -Name "Enable" -Value 1 -Force
+    Set-ItemProperty -Path $langProfileKey -Name "Install" -Value 1 -Force
+
+    # COM ThreadModel
+    $clsidKey = "HKLM:\SOFTWARE\Classes\CLSID\$clsid"
+    if (-not (Test-Path $clsidKey)) {
+        New-Item -Path $clsidKey -Force | Out-Null
+    }
+    Set-ItemProperty -Path $clsidKey -Name "ThreadModel" -Value "Both" -Force
 
     Write-Host "  TSF 配置已写入注册表" -ForegroundColor Green
 } else {
