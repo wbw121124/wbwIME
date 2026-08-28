@@ -1,25 +1,25 @@
 //! IME 宿主模块
 
-use thiserror::Error;
-use wbw_types::{ImeResult, InputMode, Candidate};
 use crate::candidate_window::CandidateWindowManager;
-use crate::key_mapper::{KeyMapper, KeyEvent, KeyAction};
+use crate::key_mapper::{KeyAction, KeyEvent, KeyMapper};
+use thiserror::Error;
+use wbw_types::{Candidate, ImeResult, InputMode};
 
 /// IME 宿主错误类型
 #[derive(Error, Debug)]
 pub enum ImeHostError {
     #[error("初始化失败: {0}")]
     InitError(String),
-    
+
     #[error("输入处理失败: {0}")]
     InputError(String),
-    
+
     #[error("候选词处理失败: {0}")]
     CandidateError(String),
-    
+
     #[error("配置错误: {0}")]
     ConfigError(String),
-    
+
     #[error("状态错误: {0}")]
     StateError(String),
 }
@@ -96,7 +96,7 @@ impl ImeHost {
     pub fn new(config: ImeConfig) -> Self {
         let window_manager = CandidateWindowManager::new();
         let key_mapper = KeyMapper::new();
-        
+
         Self {
             config,
             state: ImeState::Idle,
@@ -540,16 +540,16 @@ impl ImeEventHandler {
 pub trait ImeAdapter {
     /// 初始化适配器
     fn initialize(&mut self) -> ImeResult<()>;
-    
+
     /// 处理按键
     fn process_key(&mut self, key: KeyEvent) -> ImeResult<ImeResponse>;
-    
+
     /// 获取状态
     fn state(&self) -> &ImeState;
-    
+
     /// 获取缓冲区
     fn buffer(&self) -> &str;
-    
+
     /// 重置
     fn reset(&mut self);
 }
@@ -674,16 +674,17 @@ mod tests {
         );
         let idx = host.window_manager_mut().add_window(window);
         host.window_manager_mut().set_active_window(idx);
-        host.window_manager_mut().get_window_mut(idx).unwrap().set_candidates(vec![
-            Candidate {
+        host.window_manager_mut()
+            .get_window_mut(idx)
+            .unwrap()
+            .set_candidates(vec![Candidate {
                 text: "你好".to_string(),
                 code: "nihao".to_string(),
                 score: 1.0,
                 source: wbw_types::CandidateSource::System,
                 ngram_score: None,
                 user_weight: None,
-            },
-        ]);
+            }]);
         let resp = host.select_candidate(0).unwrap();
         assert_eq!(resp.response_type, ImeResponseType::Confirm);
         assert_eq!(resp.text.as_deref(), Some("你好"));

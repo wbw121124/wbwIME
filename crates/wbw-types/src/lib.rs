@@ -1,5 +1,5 @@
 //! 共享类型定义
-//! 
+//!
 //! 包含所有 crate 共享的类型定义，用于打破循环依赖
 
 use serde::{Deserialize, Serialize};
@@ -11,25 +11,25 @@ use thiserror::Error;
 pub enum ImeError {
     #[error("词典加载失败: {0}")]
     DictLoadError(String),
-    
+
     #[error("码表解析错误: {0}")]
     ParseError(String),
-    
+
     #[error("匹配失败: {0}")]
     MatchError(String),
-    
+
     #[error("排序失败: {0}")]
     RankError(String),
-    
+
     #[error("配置错误: {0}")]
     ConfigError(String),
-    
+
     #[error("IO 错误: {0}")]
     IoError(String),
-    
+
     #[error("N-gram 模型错误: {0}")]
     NgramError(String),
-    
+
     #[error("未知错误")]
     Unknown,
 }

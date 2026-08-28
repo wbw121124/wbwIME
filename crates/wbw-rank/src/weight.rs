@@ -8,10 +8,10 @@ use wbw_types::{Candidate, CandidateSource, ImeResult, RankConfig};
 pub enum WeightError {
     #[error("权重计算失败: {0}")]
     CalculationError(String),
-    
+
     #[error("配置错误: {0}")]
     ConfigError(String),
-    
+
     #[error("数据不足: {0}")]
     InsufficientData(String),
 }
@@ -31,26 +31,26 @@ impl WeightCalculator {
     /// 计算候选词权重
     pub fn calculate_weight(&self, candidate: &Candidate) -> f64 {
         let mut weight = 0.0;
-        
+
         // 基础权重（拼音匹配）
         weight += self.config.pin_weight;
-        
+
         // 用户权重
         if let Some(user_weight) = candidate.user_weight {
             weight += user_weight * self.config.user_weight;
         }
-        
+
         // 词频权重
         weight += candidate.score * self.config.freq_weight;
-        
+
         // N-gram 权重
         if let Some(ngram_score) = candidate.ngram_score {
             weight += ngram_score * self.config.ngram_weight;
         }
-        
+
         // 来源加成
         weight *= self.source_multiplier(&candidate.source);
-        
+
         weight
     }
 
@@ -95,11 +95,11 @@ impl WeightNormalizer {
         if weights.is_empty() {
             return;
         }
-        
+
         let min = weights.iter().cloned().fold(f64::INFINITY, f64::min);
         let max = weights.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let range = max - min;
-        
+
         if range > 0.0 {
             for weight in weights.iter_mut() {
                 *weight = (*weight - min) / range;
@@ -112,11 +112,12 @@ impl WeightNormalizer {
         if weights.is_empty() {
             return;
         }
-        
+
         let mean = weights.iter().sum::<f64>() / weights.len() as f64;
-        let variance = weights.iter().map(|w| (w - mean).powi(2)).sum::<f64>() / weights.len() as f64;
+        let variance =
+            weights.iter().map(|w| (w - mean).powi(2)).sum::<f64>() / weights.len() as f64;
         let std_dev = variance.sqrt();
-        
+
         if std_dev > 0.0 {
             for weight in weights.iter_mut() {
                 *weight = (*weight - mean) / std_dev;
@@ -127,7 +128,7 @@ impl WeightNormalizer {
     /// L2 归一化
     pub fn l2_normalize(weights: &mut [f64]) {
         let norm: f64 = weights.iter().map(|w| w.powi(2)).sum::<f64>().sqrt();
-        
+
         if norm > 0.0 {
             for weight in weights.iter_mut() {
                 *weight /= norm;
@@ -140,10 +141,10 @@ impl WeightNormalizer {
         if weights.is_empty() {
             return;
         }
-        
+
         let max_weight = weights.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let exp_sum: f64 = weights.iter().map(|w| (w - max_weight).exp()).sum();
-        
+
         for weight in weights.iter_mut() {
             *weight = (*weight - max_weight).exp() / exp_sum;
         }
@@ -252,9 +253,8 @@ impl WeightTuner {
             (seed & 0x7fffffff) as f64 / (0x7fffffff as f64)
         };
 
-        let sample = |(min, max): (f64, f64), rng: &mut dyn FnMut() -> f64| {
-            min + (max - min) * rng()
-        };
+        let sample =
+            |(min, max): (f64, f64), rng: &mut dyn FnMut() -> f64| min + (max - min) * rng();
 
         let mut best_config = RankConfig::default();
         let mut best_accuracy = -1.0_f64;
@@ -295,9 +295,8 @@ impl WeightTuner {
         let mut rng = next_random;
 
         let clamp = |v: f64, (min, max): (f64, f64)| v.clamp(min, max);
-        let random_from = |(min, max): (f64, f64), rng: &mut dyn FnMut() -> f64| {
-            min + (max - min) * rng()
-        };
+        let random_from =
+            |(min, max): (f64, f64), rng: &mut dyn FnMut() -> f64| min + (max - min) * rng();
 
         let mut current = RankConfig {
             pin_weight: random_from(ranges.pin_weight, &mut rng),

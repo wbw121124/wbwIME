@@ -211,11 +211,7 @@ impl FbtermIme {
 // ========== fbterm 协议通信（仅 Linux） ==========
 
 #[cfg(unix)]
-fn send_message(
-    stream: &mut UnixStream,
-    msg_type: MsgType,
-    payload: &[u8],
-) -> std::io::Result<()> {
+fn send_message(stream: &mut UnixStream, msg_type: MsgType, payload: &[u8]) -> std::io::Result<()> {
     let header = MsgHeader {
         msg_type: msg_type as u32,
         length: payload.len() as u32,
@@ -237,10 +233,18 @@ fn send_message(
 fn recv_message(stream: &mut UnixStream) -> std::io::Result<(MsgType, Vec<u8>)> {
     let mut header_bytes = [0u8; 8];
     stream.read_exact(&mut header_bytes)?;
-    let msg_type_val =
-        u32::from_ne_bytes([header_bytes[0], header_bytes[1], header_bytes[2], header_bytes[3]]);
-    let length =
-        u32::from_ne_bytes([header_bytes[4], header_bytes[5], header_bytes[6], header_bytes[7]]);
+    let msg_type_val = u32::from_ne_bytes([
+        header_bytes[0],
+        header_bytes[1],
+        header_bytes[2],
+        header_bytes[3],
+    ]);
+    let length = u32::from_ne_bytes([
+        header_bytes[4],
+        header_bytes[5],
+        header_bytes[6],
+        header_bytes[7],
+    ]);
     let msg_type = match msg_type_val {
         1 => MsgType::Connect,
         2 => MsgType::Disconnect,
@@ -313,12 +317,10 @@ fn run_ime(stream: &mut UnixStream, ime: &mut FbtermIme) -> std::io::Result<()> 
             }
             MsgType::CursorPosition => {
                 if payload.len() >= 8 {
-                    ime.cursor_x = u32::from_ne_bytes([
-                        payload[0], payload[1], payload[2], payload[3],
-                    ]);
-                    ime.cursor_y = u32::from_ne_bytes([
-                        payload[4], payload[5], payload[6], payload[7],
-                    ]);
+                    ime.cursor_x =
+                        u32::from_ne_bytes([payload[0], payload[1], payload[2], payload[3]]);
+                    ime.cursor_y =
+                        u32::from_ne_bytes([payload[4], payload[5], payload[6], payload[7]]);
                 }
             }
             MsgType::FbTermInfo => {
@@ -363,13 +365,12 @@ fn main() {
         let mut ime = FbtermIme::new(dict_path);
         eprintln!("[fbterm] 等待 fbterm 连接...");
 
-        let socket_path = std::env::var("FBTERM_IM_SOCKET").unwrap_or_else(|_| {
-            format!("/tmp/wbw-ime-{}.sock", std::process::id())
-        });
+        let socket_path = std::env::var("FBTERM_IM_SOCKET")
+            .unwrap_or_else(|_| format!("/tmp/wbw-ime-{}.sock", std::process::id()));
 
         let _ = std::fs::remove_file(&socket_path);
-        let listener = std::os::unix::net::UnixListener::bind(&socket_path)
-            .expect("无法创建 Unix socket");
+        let listener =
+            std::os::unix::net::UnixListener::bind(&socket_path).expect("无法创建 Unix socket");
         eprintln!("[fbterm] 监听: {}", socket_path);
 
         match listener.accept() {

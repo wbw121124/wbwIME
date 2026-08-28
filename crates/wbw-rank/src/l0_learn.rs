@@ -1,22 +1,22 @@
 //! L0 动态学习模块
 
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
-use serde::{Deserialize, Serialize};
-use wbw_types::{ImeResult, L0Config, Candidate, CandidateSource};
+use wbw_types::{Candidate, CandidateSource, ImeResult, L0Config};
 
 /// L0 学习错误类型
 #[derive(Error, Debug)]
 pub enum L0Error {
     #[error("快照加载失败: {0}")]
     SnapshotLoadError(String),
-    
+
     #[error("快照保存失败: {0}")]
     SnapshotSaveError(String),
-    
+
     #[error("学习数据不足: {0}")]
     InsufficientData(String),
-    
+
     #[error("配置错误: {0}")]
     ConfigError(String),
 }
@@ -52,8 +52,9 @@ impl L0Learner {
 
     /// 从快照加载
     pub fn from_snapshot(config: L0Config, path: &Path) -> ImeResult<Self> {
-        let contents = std::fs::read_to_string(path)
-            .map_err(|e| wbw_types::ImeError::IoError(format!("快照读取失败: {} ({})", path.display(), e)))?;
+        let contents = std::fs::read_to_string(path).map_err(|e| {
+            wbw_types::ImeError::IoError(format!("快照读取失败: {} ({})", path.display(), e))
+        })?;
         let snapshot: L0Snapshot = serde_json::from_str(&contents)
             .map_err(|e| wbw_types::ImeError::ConfigError(format!("快照解析失败: {}", e)))?;
         Ok(Self {
@@ -67,7 +68,7 @@ impl L0Learner {
     pub fn record_selection(&mut self, code: &str, word: &str) {
         let key = format!("{}:{}", code, word);
         *self.counters.entry(key).or_insert(0) += 1;
-        
+
         let entry = LearningEntry {
             code: code.to_string(),
             word: word.to_string(),
@@ -76,7 +77,7 @@ impl L0Learner {
                 .unwrap_or_default()
                 .as_secs(),
         };
-        
+
         self.data.push(entry);
     }
 
@@ -157,14 +158,22 @@ impl L0Learner {
         };
         let json = serde_json::to_string_pretty(&snapshot)
             .map_err(|e| wbw_types::ImeError::ConfigError(format!("快照序列化失败: {}", e)))?;
-        std::fs::write(&self.config.snapshot_path, json)
-            .map_err(|e| wbw_types::ImeError::IoError(format!("快照保存失败: {} ({})", self.config.snapshot_path, e)))
+        std::fs::write(&self.config.snapshot_path, json).map_err(|e| {
+            wbw_types::ImeError::IoError(format!(
+                "快照保存失败: {} ({})",
+                self.config.snapshot_path, e
+            ))
+        })
     }
 
     /// 加载快照
     pub fn load_snapshot(&mut self) -> ImeResult<()> {
-        let contents = std::fs::read_to_string(&self.config.snapshot_path)
-            .map_err(|e| wbw_types::ImeError::IoError(format!("快照读取失败: {} ({})", self.config.snapshot_path, e)))?;
+        let contents = std::fs::read_to_string(&self.config.snapshot_path).map_err(|e| {
+            wbw_types::ImeError::IoError(format!(
+                "快照读取失败: {} ({})",
+                self.config.snapshot_path, e
+            ))
+        })?;
         let snapshot: L0Snapshot = serde_json::from_str(&contents)
             .map_err(|e| wbw_types::ImeError::ConfigError(format!("快照解析失败: {}", e)))?;
         self.data = snapshot.data;
@@ -262,19 +271,21 @@ impl L0StatsCollector {
 
     /// 记录学习事件
     pub fn record_learning(&mut self, code: &str, word: &str, count: u32) {
-        self.selections.push((code.to_string(), word.to_string(), count));
-        
+        self.selections
+            .push((code.to_string(), word.to_string(), count));
+
         // 更新统计
         self.stats.total_entries += 1;
-        if count >= 3 { // 假设阈值为3
+        if count >= 3 {
+            // 假设阈值为3
             self.stats.threshold_reached += 1;
         }
-        
+
         // 更新最大选择次数
         if count > self.stats.max_selections {
             self.stats.max_selections = count;
         }
-        
+
         // 更新平均选择次数
         let total: u32 = self.selections.iter().map(|(_, _, c)| c).sum();
         self.stats.avg_selections = total as f64 / self.selections.len() as f64;
@@ -348,7 +359,11 @@ mod tests {
         L0Config {
             threshold: 2,
             snapshot_path: std::env::temp_dir()
-                .join(format!("wbw_l0_snapshot_{}_{}.json", std::process::id(), name))
+                .join(format!(
+                    "wbw_l0_snapshot_{}_{}.json",
+                    std::process::id(),
+                    name
+                ))
                 .to_string_lossy()
                 .to_string(),
         }
@@ -362,7 +377,8 @@ mod tests {
         learner.record_selection("zhongguo", "中国");
         learner.save_snapshot().unwrap();
 
-        let loaded = L0Learner::from_snapshot(config, Path::new(&learner.config().snapshot_path)).unwrap();
+        let loaded =
+            L0Learner::from_snapshot(config, Path::new(&learner.config().snapshot_path)).unwrap();
         assert_eq!(loaded.data_count(), 2);
         assert!(loaded.should_learn("zhongguo", "中国"));
 

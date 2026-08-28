@@ -26,7 +26,7 @@ impl CandidateList {
         let total = candidates.len();
         let has_next = (page + 1) * page_size < total;
         let has_prev = page > 0;
-        
+
         Self {
             candidates,
             page,
@@ -224,7 +224,11 @@ impl CandidateFilter {
 
     /// 排序（按分数降序）
     pub fn sort_by_score(candidates: &mut [Candidate]) {
-        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 }
 
@@ -239,12 +243,18 @@ impl CandidateConverter {
 
     /// 转换为编码-文本映射
     pub fn to_code_text_map(candidates: &[Candidate]) -> Vec<(String, String)> {
-        candidates.iter().map(|c| (c.code.clone(), c.text.clone())).collect()
+        candidates
+            .iter()
+            .map(|c| (c.code.clone(), c.text.clone()))
+            .collect()
     }
 
     /// 转换为分数映射
     pub fn to_score_map(candidates: &[Candidate]) -> Vec<(String, f64)> {
-        candidates.iter().map(|c| (c.text.clone(), c.score)).collect()
+        candidates
+            .iter()
+            .map(|c| (c.text.clone(), c.score))
+            .collect()
     }
 }
 

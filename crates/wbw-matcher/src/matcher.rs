@@ -2,12 +2,12 @@
 //!
 //! 组合词典查询、模糊匹配、分词，提供统一的输入匹配接口。
 
+use crate::fuzzy::{FuzzyConfig, FuzzyMatcher, FuzzyRule};
 use std::num::NonZeroUsize;
 use std::time::Instant;
 use wbw_dict::entry::{DictEntry, DictSource};
 use wbw_dict::{CinParser, FstDict, FstDictBuilder};
 use wbw_types::{Candidate, CandidateSource, InputContext};
-use crate::fuzzy::{FuzzyConfig, FuzzyMatcher, FuzzyRule};
 
 /// 匹配器配置
 #[derive(Debug, Clone)]
@@ -193,7 +193,11 @@ impl Matcher {
         }
 
         // 按分数降序排序
-        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         // 全局去重（保留首个即最高分），不受相邻性限制
         let mut seen = std::collections::HashSet::new();
         candidates.retain(|c| seen.insert(c.text.clone()));
@@ -297,7 +301,11 @@ impl Matcher {
         }
 
         // 按 (text, code) 去重并保留最高分
-        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let mut seen = std::collections::HashSet::new();
         candidates.retain(|c| seen.insert((c.text.clone(), c.code.clone())));
         candidates
@@ -411,12 +419,42 @@ mod tests {
     fn build_test_dict() -> FstDict {
         let mut builder = FstDictBuilder::new();
         let entries = vec![
-            DictEntry { code: "wo".into(), word: "我".into(), freq: 100, source: DictSource::Base },
-            DictEntry { code: "wo".into(), word: "喔".into(), freq: 50, source: DictSource::Base },
-            DictEntry { code: "ai".into(), word: "爱".into(), freq: 200, source: DictSource::Base },
-            DictEntry { code: "ni".into(), word: "你".into(), freq: 150, source: DictSource::Base },
-            DictEntry { code: "zhongguo".into(), word: "中国".into(), freq: 300, source: DictSource::Base },
-            DictEntry { code: "zhongyu".into(), word: "中雨".into(), freq: 80, source: DictSource::Base },
+            DictEntry {
+                code: "wo".into(),
+                word: "我".into(),
+                freq: 100,
+                source: DictSource::Base,
+            },
+            DictEntry {
+                code: "wo".into(),
+                word: "喔".into(),
+                freq: 50,
+                source: DictSource::Base,
+            },
+            DictEntry {
+                code: "ai".into(),
+                word: "爱".into(),
+                freq: 200,
+                source: DictSource::Base,
+            },
+            DictEntry {
+                code: "ni".into(),
+                word: "你".into(),
+                freq: 150,
+                source: DictSource::Base,
+            },
+            DictEntry {
+                code: "zhongguo".into(),
+                word: "中国".into(),
+                freq: 300,
+                source: DictSource::Base,
+            },
+            DictEntry {
+                code: "zhongyu".into(),
+                word: "中雨".into(),
+                freq: 80,
+                source: DictSource::Base,
+            },
         ];
         builder.add_entries(entries);
         builder.build(DictSource::Base)
@@ -518,8 +556,18 @@ mod tests {
         // do_match 应按词去重，只保留最高分的一个候选。
         let mut builder = FstDictBuilder::new();
         builder.add_entries(vec![
-            DictEntry { code: "zdl".into(), word: "最大流".into(), freq: 100, source: DictSource::Base },
-            DictEntry { code: "zdliu".into(), word: "最大流".into(), freq: 50, source: DictSource::Base },
+            DictEntry {
+                code: "zdl".into(),
+                word: "最大流".into(),
+                freq: 100,
+                source: DictSource::Base,
+            },
+            DictEntry {
+                code: "zdliu".into(),
+                word: "最大流".into(),
+                freq: 50,
+                source: DictSource::Base,
+            },
         ]);
         let dict = builder.build(DictSource::Base);
         let mut matcher = Matcher::with_dict(MatcherConfig::default(), dict);

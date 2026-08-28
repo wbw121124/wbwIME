@@ -9,28 +9,28 @@ use wbw_types::ImeError;
 pub enum CoreError {
     #[error("会话错误: {0}")]
     SessionError(String),
-    
+
     #[error("候选词错误: {0}")]
     CandidateError(String),
-    
+
     #[error("上下文错误: {0}")]
     ContextError(String),
-    
+
     #[error("词典错误: {0}")]
     DictError(String),
-    
+
     #[error("匹配错误: {0}")]
     MatchError(String),
-    
+
     #[error("排序错误: {0}")]
     RankError(String),
-    
+
     #[error("配置错误: {0}")]
     ConfigError(String),
-    
+
     #[error("IO 错误: {0}")]
     IoError(String),
-    
+
     #[error("未知错误")]
     Unknown,
 }
@@ -121,7 +121,11 @@ pub struct ErrorRecovery;
 
 impl ErrorRecovery {
     /// 尝试恢复错误
-    pub fn try_recover<T, F>(error: &CoreError, strategy: RecoveryStrategy, fallback: F) -> CoreResult<T>
+    pub fn try_recover<T, F>(
+        error: &CoreError,
+        strategy: RecoveryStrategy,
+        fallback: F,
+    ) -> CoreResult<T>
     where
         F: FnOnce() -> CoreResult<T>,
     {

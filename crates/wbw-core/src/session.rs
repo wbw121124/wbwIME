@@ -1,9 +1,9 @@
 //! Session 管理模块
 
+use crate::candidate::CandidateList;
+use crate::context::{ContextManager, ContextSnapshot};
 use std::collections::HashMap;
 use wbw_types::SessionConfig;
-use crate::context::{ContextManager, ContextSnapshot};
-use crate::candidate::CandidateList;
 
 /// 会话管理器
 pub struct SessionManager {
@@ -29,10 +29,10 @@ impl SessionManager {
     pub fn create_session(&mut self) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
-        
+
         let state = SessionState::new(id, self.default_config.clone());
         self.sessions.insert(id, state);
-        
+
         id
     }
 
@@ -40,10 +40,10 @@ impl SessionManager {
     pub fn create_session_with_config(&mut self, config: SessionConfig) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
-        
+
         let state = SessionState::new(id, config);
         self.sessions.insert(id, state);
-        
+
         id
     }
 
@@ -119,7 +119,7 @@ impl SessionState {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
+
         Self {
             id,
             context: ContextManager::new(id),
@@ -143,7 +143,7 @@ impl SessionState {
     pub fn save_snapshot(&mut self) {
         let snapshot = ContextSnapshot::from(self.context.current());
         self.snapshots.push(snapshot);
-        
+
         // 限制快照数量
         if self.snapshots.len() > 50 {
             self.snapshots.remove(0);
@@ -194,7 +194,7 @@ impl SessionState {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
+
         now - self.last_active > timeout_secs
     }
 
@@ -204,7 +204,7 @@ impl SessionState {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
+
         now - self.created_at
     }
 }
@@ -291,13 +291,15 @@ impl SessionStatsCollector {
         self.stats.active_sessions = self.stats.active_sessions.saturating_sub(1);
         self.durations.push(duration_secs);
         self.candidate_counts.push(candidate_count);
-        
+
         // 更新平均值
         if !self.durations.is_empty() {
-            self.stats.avg_duration_secs = self.durations.iter().sum::<u64>() as f64 / self.durations.len() as f64;
+            self.stats.avg_duration_secs =
+                self.durations.iter().sum::<u64>() as f64 / self.durations.len() as f64;
         }
         if !self.candidate_counts.is_empty() {
-            self.stats.avg_candidates = self.candidate_counts.iter().sum::<usize>() as f64 / self.candidate_counts.len() as f64;
+            self.stats.avg_candidates = self.candidate_counts.iter().sum::<usize>() as f64
+                / self.candidate_counts.len() as f64;
         }
     }
 

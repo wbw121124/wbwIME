@@ -1,10 +1,10 @@
-pub mod fst_dict;
+pub mod builder;
 pub mod cin_parser;
 pub mod entry;
-pub mod builder;
+pub mod fst_dict;
 
 // 重新导出常用类型
-pub use entry::{CinEntry, DictEntry, DictSource, DictBuilderConfig};
-pub use cin_parser::{CinParser, CinParseResult, CinFuzzyRule};
-pub use fst_dict::{FstDict, FstDictBuilder, edit_distance};
 pub use builder::{DictBuilder, DictValidator};
+pub use cin_parser::{CinFuzzyRule, CinParseResult, CinParser};
+pub use entry::{CinEntry, DictBuilderConfig, DictEntry, DictSource};
+pub use fst_dict::{edit_distance, FstDict, FstDictBuilder};

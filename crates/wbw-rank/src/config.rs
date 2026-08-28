@@ -9,13 +9,13 @@ use wbw_types::{ImeResult, RankConfig};
 pub enum ConfigError {
     #[error("配置文件读取失败: {0}")]
     FileError(String),
-    
+
     #[error("配置解析失败: {0}")]
     ParseError(String),
-    
+
     #[error("配置验证失败: {0}")]
     ValidationError(String),
-    
+
     #[error("配置保存失败: {0}")]
     SaveError(String),
 }
@@ -39,8 +39,9 @@ impl RankConfigManager {
 
     /// 从文件加载配置
     pub fn from_file(path: &Path) -> ImeResult<Self> {
-        let contents = std::fs::read_to_string(path)
-            .map_err(|e| wbw_types::ImeError::IoError(format!("配置文件读取失败: {} ({})", path.display(), e)))?;
+        let contents = std::fs::read_to_string(path).map_err(|e| {
+            wbw_types::ImeError::IoError(format!("配置文件读取失败: {} ({})", path.display(), e))
+        })?;
         let config: RankConfig = serde_json::from_str(&contents)
             .map_err(|e| wbw_types::ImeError::ConfigError(format!("配置解析失败: {}", e)))?;
         Ok(Self {
@@ -77,7 +78,9 @@ impl RankConfigManager {
         if let Some(path) = &self.config_path {
             self.save_to(Path::new(path))
         } else {
-            Err(wbw_types::ImeError::ConfigError("未设置配置文件路径".to_string()))
+            Err(wbw_types::ImeError::ConfigError(
+                "未设置配置文件路径".to_string(),
+            ))
         }
     }
 
@@ -85,8 +88,9 @@ impl RankConfigManager {
     pub fn save_to(&self, path: &Path) -> ImeResult<()> {
         let json = serde_json::to_string_pretty(&self.config)
             .map_err(|e| wbw_types::ImeError::ConfigError(format!("配置序列化失败: {}", e)))?;
-        std::fs::write(path, json)
-            .map_err(|e| wbw_types::ImeError::IoError(format!("配置保存失败: {} ({})", path.display(), e)))
+        std::fs::write(path, json).map_err(|e| {
+            wbw_types::ImeError::IoError(format!("配置保存失败: {} ({})", path.display(), e))
+        })
     }
 
     /// 验证配置
@@ -199,15 +203,15 @@ impl ConfigValidator {
     /// 获取验证错误消息
     pub fn validation_errors(config: &RankConfig) -> Vec<String> {
         let mut errors = Vec::new();
-        
+
         if !Self::validate_weights(config) {
             errors.push("权重值不能为负数".to_string());
         }
-        
+
         if !Self::validate_max_candidates(config) {
             errors.push("最大候选词数量必须在 1-100 之间".to_string());
         }
-        
+
         errors
     }
 }

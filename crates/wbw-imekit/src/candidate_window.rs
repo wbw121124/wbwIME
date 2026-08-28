@@ -8,13 +8,13 @@ use wbw_types::{Candidate, ImeResult};
 pub enum CandidateWindowError {
     #[error("窗口初始化失败: {0}")]
     InitError(String),
-    
+
     #[error("窗口更新失败: {0}")]
     UpdateError(String),
-    
+
     #[error("窗口显示失败: {0}")]
     ShowError(String),
-    
+
     #[error("窗口隐藏失败: {0}")]
     HideError(String),
 }
@@ -459,10 +459,7 @@ mod tests {
     }
 
     fn make_window() -> CandidateWindow {
-        CandidateWindow::new(
-            WindowPosition::new(0, 0, 300, 200),
-            WindowStyle::default(),
-        )
+        CandidateWindow::new(WindowPosition::new(0, 0, 300, 200), WindowStyle::default())
     }
 
     #[test]
@@ -478,7 +475,9 @@ mod tests {
     #[test]
     fn test_pagination_and_select_next() {
         let mut window = make_window();
-        let candidates: Vec<Candidate> = (0..25).map(|i| make_candidate(&format!("词{}", i))).collect();
+        let candidates: Vec<Candidate> = (0..25)
+            .map(|i| make_candidate(&format!("词{}", i)))
+            .collect();
         window.set_candidates(candidates);
         assert_eq!(window.page(), 0);
         assert_eq!(window.current_page_candidates().len(), 10);
@@ -499,7 +498,9 @@ mod tests {
     #[test]
     fn test_handle_click_select() {
         let mut window = make_window();
-        let candidates: Vec<Candidate> = (0..10).map(|i| make_candidate(&format!("词{}", i))).collect();
+        let candidates: Vec<Candidate> = (0..10)
+            .map(|i| make_candidate(&format!("词{}", i)))
+            .collect();
         window.set_candidates(candidates);
         // 第 2 个候选（索引 1）位置在 [30, 60)
         let selected = window.handle_click(45, 10);

@@ -3,12 +3,12 @@
 //! 基于 `fst::Map` 的压缩前缀词典，支持精确查询、前缀查询和模糊查询（Levenshtein automaton）。
 //! 支持序列化为二进制快照（`.fst` 文件）和 mmap 只读加载。
 
+use memmap2::Mmap;
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
-use memmap2::Mmap;
 use thiserror::Error;
 use wbw_types::ImeResult;
 
@@ -61,8 +61,9 @@ impl FstDict {
 
     /// 从文件 mmap 加载词典（只读映射，适合大词典）
     pub fn from_file(path: &Path) -> ImeResult<Self> {
-        let file = File::open(path)
-            .map_err(|e| wbw_types::ImeError::IoError(format!("打开文件失败 {}: {}", path.display(), e)))?;
+        let file = File::open(path).map_err(|e| {
+            wbw_types::ImeError::IoError(format!("打开文件失败 {}: {}", path.display(), e))
+        })?;
         let mmap = unsafe {
             Mmap::map(&file)
                 .map_err(|e| wbw_types::ImeError::IoError(format!("mmap 映射失败: {}", e)))?
@@ -118,10 +119,12 @@ impl FstDict {
 
     /// 写入 .fst 文件
     pub fn write_to_file(&self, path: &Path) -> ImeResult<()> {
-        let file = File::create(path)
-            .map_err(|e| wbw_types::ImeError::IoError(format!("创建文件失败 {}: {}", path.display(), e)))?;
+        let file = File::create(path).map_err(|e| {
+            wbw_types::ImeError::IoError(format!("创建文件失败 {}: {}", path.display(), e))
+        })?;
         let mut writer = BufWriter::new(file);
-        writer.write_all(self.map.as_ref().as_bytes())
+        writer
+            .write_all(self.map.as_ref().as_bytes())
             .map_err(|e| wbw_types::ImeError::IoError(format!("写入文件失败: {}", e)))?;
         Ok(())
     }
@@ -476,10 +479,7 @@ mod tests {
     #[test]
     fn test_merge() {
         let entries1 = vec![make_entry("wo", "我", 100)];
-        let entries2 = vec![
-            make_entry("wo", "我", 100),
-            make_entry("wo", "喔", 50),
-        ];
+        let entries2 = vec![make_entry("wo", "我", 100), make_entry("wo", "喔", 50)];
         let mut dict1 = FstDict::from_entries(entries1, DictSource::Base);
         let dict2 = FstDict::from_entries(entries2, DictSource::User);
 
@@ -534,10 +534,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_file() {
-        let entries = vec![
-            make_entry("wo", "我", 100),
-            make_entry("ai", "爱", 200),
-        ];
+        let entries = vec![make_entry("wo", "我", 100), make_entry("ai", "爱", 200)];
         let dict = FstDict::from_entries(entries, DictSource::Base);
 
         let dir = std::env::temp_dir().join("wbwime_test");

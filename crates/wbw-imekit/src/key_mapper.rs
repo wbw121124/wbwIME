@@ -9,10 +9,10 @@ use wbw_types::{ImeError, ImeResult};
 pub enum KeyMapperError {
     #[error("按键映射无效: {0}")]
     InvalidMapping(String),
-    
+
     #[error("按键配置错误: {0}")]
     ConfigError(String),
-    
+
     #[error("按键处理失败: {0}")]
     ProcessingError(String),
 }
@@ -96,7 +96,7 @@ impl KeyEvent {
 impl fmt::Display for KeyEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut parts = Vec::new();
-        
+
         if self.ctrl {
             parts.push("Ctrl".to_string());
         }
@@ -109,13 +109,13 @@ impl fmt::Display for KeyEvent {
         if self.meta {
             parts.push("Meta".to_string());
         }
-        
+
         if let Some(ch) = self.char {
             parts.push(ch.to_string());
         } else {
             parts.push(format!("Key({})", self.code));
         }
-        
+
         write!(f, "{}", parts.join("+"))
     }
 }
@@ -240,12 +240,18 @@ impl KeyMapper {
     /// 查找映射
     pub fn find_mapping(&self, key: &KeyEvent) -> Option<&KeyMapping> {
         // 先查找自定义映射
-        if let Some(mapping) = self.mappings.iter().find(|m| m.from.code == key.code && m.enabled) {
+        if let Some(mapping) = self
+            .mappings
+            .iter()
+            .find(|m| m.from.code == key.code && m.enabled)
+        {
             return Some(mapping);
         }
-        
+
         // 再查找默认映射
-        self.default_mappings.iter().find(|m| m.from.code == key.code && m.enabled)
+        self.default_mappings
+            .iter()
+            .find(|m| m.from.code == key.code && m.enabled)
     }
 
     /// 处理按键
@@ -373,32 +379,38 @@ pub struct KeyPresets;
 impl KeyPresets {
     /// 获取拼音输入法预设
     pub fn pinyin_preset() -> Vec<KeyMapping> {
-        ('a'..='z').map(|ch| KeyMapping {
-            from: KeyEvent::new(ch as u32, Some(ch)),
-            to: KeyAction::InputChar(ch),
-            enabled: true,
-            description: format!("拼音字母 {}", ch),
-        }).collect()
+        ('a'..='z')
+            .map(|ch| KeyMapping {
+                from: KeyEvent::new(ch as u32, Some(ch)),
+                to: KeyAction::InputChar(ch),
+                enabled: true,
+                description: format!("拼音字母 {}", ch),
+            })
+            .collect()
     }
 
     /// 获取五笔输入法预设
     pub fn wubi_preset() -> Vec<KeyMapping> {
-        ('a'..='z').map(|ch| KeyMapping {
-            from: KeyEvent::new(ch as u32, Some(ch)),
-            to: KeyAction::InputChar(ch),
-            enabled: true,
-            description: format!("五笔字母 {}", ch),
-        }).collect()
+        ('a'..='z')
+            .map(|ch| KeyMapping {
+                from: KeyEvent::new(ch as u32, Some(ch)),
+                to: KeyAction::InputChar(ch),
+                enabled: true,
+                description: format!("五笔字母 {}", ch),
+            })
+            .collect()
     }
 
     /// 获取英文输入法预设
     pub fn english_preset() -> Vec<KeyMapping> {
-        let mut mappings: Vec<KeyMapping> = ('a'..='z').map(|ch| KeyMapping {
-            from: KeyEvent::new(ch as u32, Some(ch)),
-            to: KeyAction::InputChar(ch),
-            enabled: true,
-            description: format!("英文字母 {}", ch),
-        }).collect();
+        let mut mappings: Vec<KeyMapping> = ('a'..='z')
+            .map(|ch| KeyMapping {
+                from: KeyEvent::new(ch as u32, Some(ch)),
+                to: KeyAction::InputChar(ch),
+                enabled: true,
+                description: format!("英文字母 {}", ch),
+            })
+            .collect();
         // 空格键（VK_SPACE=32）作为输入空格
         mappings.push(KeyMapping {
             from: KeyEvent::new(32, Some(' ')),
@@ -444,18 +456,22 @@ impl KeyStatsCollector {
     pub fn record_key(&mut self, key: &KeyEvent) {
         self.stats.total_keys += 1;
         *self.stats.key_counts.entry(key.code).or_insert(0) += 1;
-        
+
         // 计算间隔
         if let Some(last_time) = self.last_key_time {
             let interval = key.timestamp - last_time;
             let total_intervals = self.stats.total_keys as f64 - 1.0;
-            self.stats.avg_interval_ms = (self.stats.avg_interval_ms * (total_intervals - 1.0) + interval as f64) / total_intervals;
+            self.stats.avg_interval_ms = (self.stats.avg_interval_ms * (total_intervals - 1.0)
+                + interval as f64)
+                / total_intervals;
         }
-        
+
         self.last_key_time = Some(key.timestamp);
-        
+
         // 更新最频繁按键
-        if let Some((key_code, count)) = self.stats.key_counts.iter().max_by_key(|(_, count)| *count) {
+        if let Some((key_code, count)) =
+            self.stats.key_counts.iter().max_by_key(|(_, count)| *count)
+        {
             self.stats.most_frequent_key = Some(*key_code);
             let _ = *count;
         }
@@ -482,7 +498,9 @@ mod tests {
         let mapper = KeyMapper::new();
         let mappings = mapper.default_mappings_ref();
         assert!(mappings.iter().any(|m| matches!(m.to, KeyAction::Confirm)));
-        assert!(mappings.iter().any(|m| matches!(m.to, KeyAction::DeleteChar)));
+        assert!(mappings
+            .iter()
+            .any(|m| matches!(m.to, KeyAction::DeleteChar)));
         assert!(mappings.iter().any(|m| matches!(m.to, KeyAction::Cancel)));
     }
 
@@ -499,7 +517,9 @@ mod tests {
     #[test]
     fn test_load_and_save_config() {
         let mut mapper = KeyMapper::new();
-        mapper.load_config("13=Confirm\n8=DeleteChar\na=A\n").unwrap();
+        mapper
+            .load_config("13=Confirm\n8=DeleteChar\na=A\n")
+            .unwrap();
         let saved = mapper.save_config().unwrap();
         assert!(saved.contains("13=Confirm"));
         assert!(saved.contains("8=DeleteChar"));

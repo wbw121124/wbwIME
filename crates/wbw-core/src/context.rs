@@ -1,7 +1,7 @@
 //! 输入上下文模块
 
 use serde::{Deserialize, Serialize};
-use wbw_types::{InputContext, InputMode, ImeResult};
+use wbw_types::{ImeResult, InputContext, InputMode};
 
 /// 上下文管理器
 pub struct ContextManager {
@@ -23,7 +23,7 @@ impl ContextManager {
             selected: Vec::new(),
             session_id,
         };
-        
+
         Self {
             current,
             history: Vec::new(),
@@ -58,11 +58,11 @@ impl ContextManager {
                 .last()
                 .map(|(i, _)| i)
                 .unwrap_or(0);
-            
+
             let _removed = self.current.buffer[prev_boundary..self.current.cursor].to_string();
             self.current.buffer.truncate(prev_boundary);
             self.current.cursor = prev_boundary;
-            
+
             // 返回被删除的字符（简化处理）
             Some('_')
         } else {

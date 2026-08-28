@@ -33,10 +33,7 @@ impl NgramTable {
     }
 
     /// 从计数数据构建
-    pub fn from_counts(
-        order: usize,
-        counts: HashMap<(Vec<String>, String), u64>,
-    ) -> Self {
+    pub fn from_counts(order: usize, counts: HashMap<(Vec<String>, String), u64>) -> Self {
         let mut context_counts: HashMap<Vec<String>, u64> = HashMap::new();
         let mut vocab: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut entry_count: u64 = 0;
@@ -89,7 +86,10 @@ impl NgramTable {
     /// 获取 N-gram 计数
     pub fn count(&self, context: &[&str], word: &str) -> u64 {
         let ctx: Vec<String> = context.iter().map(|s| s.to_string()).collect();
-        self.counts.get(&(ctx, word.to_string())).copied().unwrap_or(0)
+        self.counts
+            .get(&(ctx, word.to_string()))
+            .copied()
+            .unwrap_or(0)
     }
 
     /// 获取阶数

@@ -1,10 +1,10 @@
-pub mod ranker;
-pub mod l0_learn;
-pub mod weight;
 pub mod config;
+pub mod l0_learn;
+pub mod ranker;
+pub mod weight;
 
 // 重新导出常用类型
-pub use ranker::{Ranker, RankerBuilder, RankResult, RankStrategy};
+pub use config::{ConfigDiff, ConfigPresets, ConfigValidator, RankConfigManager};
 pub use l0_learn::{L0Learner, L0Stats, LearningEntry, LearningSuggestion};
-pub use weight::{WeightCalculator, WeightNormalizer, WeightTuner, WeightRanges};
-pub use config::{RankConfigManager, ConfigPresets, ConfigValidator, ConfigDiff};
+pub use ranker::{RankResult, RankStrategy, Ranker, RankerBuilder};
+pub use weight::{WeightCalculator, WeightNormalizer, WeightRanges, WeightTuner};

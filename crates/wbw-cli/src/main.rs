@@ -13,9 +13,9 @@
 use std::path::{Path, PathBuf};
 use std::process;
 
-use wbw_dict::{CinParser, DictBuilder, DictValidator, FstDict, CinFuzzyRule};
+use wbw_dict::{CinFuzzyRule, CinParser, DictBuilder, DictValidator, FstDict};
 use wbw_matcher::{Matcher, MatcherConfig};
-use wbw_rank::{Ranker, RankConfigManager, ConfigValidator};
+use wbw_rank::{ConfigValidator, RankConfigManager, Ranker};
 use wbw_types::{Candidate, GlobalConfig, InputContext, InputMode};
 
 /// CLI 错误类型
@@ -58,11 +58,23 @@ type CliResult<T> = Result<T, CliError>;
 #[derive(Debug)]
 pub enum CliCommand {
     Interactive,
-    Query { code: String },
-    TestMatch { code: String, dict_path: PathBuf },
-    BuildDict { dict_path: PathBuf, out_path: PathBuf },
-    Validate { dict_path: PathBuf },
-    Stats { dict_path: Option<PathBuf> },
+    Query {
+        code: String,
+    },
+    TestMatch {
+        code: String,
+        dict_path: PathBuf,
+    },
+    BuildDict {
+        dict_path: PathBuf,
+        out_path: PathBuf,
+    },
+    Validate {
+        dict_path: PathBuf,
+    },
+    Stats {
+        dict_path: Option<PathBuf>,
+    },
     Version,
     Help,
 }
@@ -79,15 +91,17 @@ fn parse_args() -> CliResult<CliCommand> {
         "interactive" | "i" => Ok(CliCommand::Interactive),
         "query" | "q" => {
             if args.len() < 3 {
-                Err(CliError::InputError("请提供查询编码: wbwime query <code>".to_string()))
+                Err(CliError::InputError(
+                    "请提供查询编码: wbwime query <code>".to_string(),
+                ))
             } else {
-                Ok(CliCommand::Query { code: args[2].clone() })
+                Ok(CliCommand::Query {
+                    code: args[2].clone(),
+                })
             }
         }
-        "test-match" | "t" => {
-            parse_two_args(&args, "test-match <code> <dict-path>")
-                .map(|(code, dict_path)| CliCommand::TestMatch { code, dict_path })
-        }
+        "test-match" | "t" => parse_two_args(&args, "test-match <code> <dict-path>")
+            .map(|(code, dict_path)| CliCommand::TestMatch { code, dict_path }),
         "build-dict" | "b" => {
             if args.len() < 4 {
                 Err(CliError::InputError(
@@ -102,7 +116,9 @@ fn parse_args() -> CliResult<CliCommand> {
         }
         "validate" => {
             if args.len() < 3 {
-                Err(CliError::InputError("请提供词典路径: wbwime validate <dict-path>".to_string()))
+                Err(CliError::InputError(
+                    "请提供词典路径: wbwime validate <dict-path>".to_string(),
+                ))
             } else {
                 Ok(CliCommand::Validate {
                     dict_path: PathBuf::from(&args[2]),
@@ -191,9 +207,12 @@ fn load_dict_from_file(path: &Path) -> CliResult<(FstDict, Vec<CinFuzzyRule>)> {
     match path.extension().and_then(|e| e.to_str()) {
         Some("fst") => {
             // 直接从 .fst 二进制文件加载
-            let dict = FstDict::from_file(path)
-                .map_err(|e| CliError::DictError(e.to_string()))?;
-            println!("从 .fst 文件加载: {} 条目, {} 编码", dict.entry_count(), dict.code_count());
+            let dict = FstDict::from_file(path).map_err(|e| CliError::DictError(e.to_string()))?;
+            println!(
+                "从 .fst 文件加载: {} 条目, {} 编码",
+                dict.entry_count(),
+                dict.code_count()
+            );
             Ok((dict, Vec::new()))
         }
         _ => {
@@ -237,8 +256,7 @@ fn build_matcher(dict: FstDict, fuzzy_rules: Option<Vec<CinFuzzyRule>>) -> Match
 /// 构建排序器
 fn build_ranker(config: &GlobalConfig) -> CliResult<Ranker> {
     let manager = RankConfigManager::from_memory(config.rank.clone());
-    ConfigValidator::validate(&config.rank)
-        .map_err(|e| CliError::RankError(e.to_string()))?;
+    ConfigValidator::validate(&config.rank).map_err(|e| CliError::RankError(e.to_string()))?;
     Ok(Ranker::from_config_manager(manager))
 }
 
@@ -286,7 +304,11 @@ fn run_interactive() -> CliResult<()> {
 
     println!("wbwIME 交互模式");
     println!("输入拼音进行匹配，输入 'quit'/'exit' 退出，'clear' 清空");
-    println!("示例解码: {} (词条 {})", dict_path.display(), dict_path.exists());
+    println!(
+        "示例解码: {} (词条 {})",
+        dict_path.display(),
+        dict_path.exists()
+    );
     println!();
 
     let (dict, fuzzy_rules) = match load_dict_from_file(&dict_path) {
@@ -471,7 +493,11 @@ fn run_test_match(code: &str, dict_path: &Path) -> CliResult<()> {
         all.extend(exact);
         all.extend(prefix);
         all.extend(fuzzy);
-        all.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        all.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let mut seen = std::collections::HashSet::new();
         all.retain(|c| seen.insert(c.text.clone()));
         let ranked = ranker.rank(all);
@@ -491,9 +517,7 @@ fn run_build_dict(dict_path: &Path, out_path: &Path) -> CliResult<()> {
     dict.write_to_file(out_path)
         .map_err(|e| CliError::DictError(e.to_string()))?;
 
-    let file_size = std::fs::metadata(out_path)
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let file_size = std::fs::metadata(out_path).map(|m| m.len()).unwrap_or(0);
 
     println!("词典构建完成:");
     println!("  输入: {}", dict_path.display());
@@ -600,7 +624,10 @@ fn main() {
         CliCommand::Interactive => run_interactive(),
         CliCommand::Query { code } => run_query(&code),
         CliCommand::TestMatch { code, dict_path } => run_test_match(&code, &dict_path),
-        CliCommand::BuildDict { dict_path, out_path } => run_build_dict(&dict_path, &out_path),
+        CliCommand::BuildDict {
+            dict_path,
+            out_path,
+        } => run_build_dict(&dict_path, &out_path),
         CliCommand::Validate { dict_path } => run_validate(&dict_path),
         CliCommand::Stats { dict_path } => run_stats(&dict_path),
         CliCommand::Version => {

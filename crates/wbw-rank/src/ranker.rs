@@ -2,11 +2,11 @@
 //!
 //! 提供候选词排序功能，支持加权排序、L0 动态学习。
 
+use crate::config::RankConfigManager;
+use crate::l0_learn::L0Learner;
+use crate::weight::WeightCalculator;
 use std::time::Instant;
 use wbw_types::{Candidate, L0Config, RankConfig};
-use crate::config::RankConfigManager;
-use crate::weight::WeightCalculator;
-use crate::l0_learn::L0Learner;
 
 /// 排序器
 pub struct Ranker {
@@ -71,11 +71,7 @@ impl Ranker {
     /// 带上下文的排序
     ///
     /// 考虑上下文调整候选词权重。
-    pub fn rank_with_context(
-        &self,
-        candidates: Vec<Candidate>,
-        context: &str,
-    ) -> Vec<Candidate> {
+    pub fn rank_with_context(&self, candidates: Vec<Candidate>, context: &str) -> Vec<Candidate> {
         let mut ranked = self.rank(candidates);
 
         // 如果有上下文，根据上下文调整权重
@@ -234,8 +230,7 @@ mod tests {
 
     #[test]
     fn test_builder() {
-        let ranker = RankerBuilder::new()
-            .build();
+        let ranker = RankerBuilder::new().build();
         assert_eq!(ranker.config_manager().config().max_candidates, 10);
     }
 }

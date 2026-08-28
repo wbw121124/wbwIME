@@ -197,7 +197,12 @@ impl FuzzyMatcher {
     }
 
     /// 对候选列表进行模糊匹配过滤
-    pub fn filter_candidates<T>(&self, input: &str, candidates: &[T], extract: impl Fn(&T) -> &str) -> Vec<(T, f64)>
+    pub fn filter_candidates<T>(
+        &self,
+        input: &str,
+        candidates: &[T],
+        extract: impl Fn(&T) -> &str,
+    ) -> Vec<(T, f64)>
     where
         T: Clone,
     {

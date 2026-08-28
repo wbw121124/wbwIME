@@ -4,7 +4,7 @@ use std::path::Path;
 use thiserror::Error;
 use wbw_types::ImeResult;
 
-use crate::cin_parser::{CinParser, CinParseResult};
+use crate::cin_parser::{CinParseResult, CinParser};
 use crate::entry::{DictBuilderConfig, DictEntry, DictSource};
 use crate::fst_dict::{FstDict, FstDictBuilder};
 
@@ -62,9 +62,9 @@ impl DictBuilder {
 
     /// 从 .cin 文件加载
     pub fn load_cin(&mut self, path: &Path) -> ImeResult<()> {
-        let path_str = path.to_str().ok_or_else(|| {
-            wbw_types::ImeError::ParseError("路径包含无效 Unicode".to_string())
-        })?;
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| wbw_types::ImeError::ParseError("路径包含无效 Unicode".to_string()))?;
         let parser = CinParser::new(path_str);
         let cin_entries = parser.parse()?;
 
@@ -101,9 +101,9 @@ impl DictBuilder {
 
     /// 从 .cin 文件加载（返回完整结果，包含模糊规则）
     pub fn load_cin_full(&mut self, path: &Path) -> ImeResult<CinParseResult> {
-        let path_str = path.to_str().ok_or_else(|| {
-            wbw_types::ImeError::ParseError("路径包含无效 Unicode".to_string())
-        })?;
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| wbw_types::ImeError::ParseError("路径包含无效 Unicode".to_string()))?;
         let parser = CinParser::new(path_str);
         let result = parser.parse_full()?;
 
@@ -151,11 +151,8 @@ impl DictBuilder {
     /// 排序词条（先按编码，再按词频降序）
     pub fn sort(&mut self) {
         if self.config.sort_entries {
-            self.entries.sort_by(|a, b| {
-                a.code
-                    .cmp(&b.code)
-                    .then_with(|| b.freq.cmp(&a.freq))
-            });
+            self.entries
+                .sort_by(|a, b| a.code.cmp(&b.code).then_with(|| b.freq.cmp(&a.freq)));
         }
     }
 
@@ -194,9 +191,9 @@ pub struct DictValidator;
 impl DictValidator {
     /// 验证 .cin 文件格式
     pub fn validate_cin(path: &Path) -> ImeResult<()> {
-        let path_str = path.to_str().ok_or_else(|| {
-            wbw_types::ImeError::ParseError("路径包含无效 Unicode".to_string())
-        })?;
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| wbw_types::ImeError::ParseError("路径包含无效 Unicode".to_string()))?;
         let parser = CinParser::new(path_str);
         parser.validate()
     }
@@ -230,18 +227,14 @@ mod tests {
     #[test]
     fn test_dict_builder_load_cin_str() {
         let mut builder = DictBuilder::new();
-        builder
-            .load_cin_str("wo 我\nai 爱\nni 你\n")
-            .unwrap();
+        builder.load_cin_str("wo 我\nai 爱\nni 你\n").unwrap();
         assert_eq!(builder.entry_count(), 3);
     }
 
     #[test]
     fn test_dict_builder_deduplicate() {
         let mut builder = DictBuilder::new();
-        builder
-            .load_cin_str("wo 我\nwo 我\nwo 喔\n")
-            .unwrap();
+        builder.load_cin_str("wo 我\nwo 我\nwo 喔\n").unwrap();
         assert_eq!(builder.entry_count(), 3); // 去重前
         builder.deduplicate();
         assert_eq!(builder.entry_count(), 2); // 去重后：我、喔
@@ -250,9 +243,7 @@ mod tests {
     #[test]
     fn test_dict_builder_build_fst() {
         let mut builder = DictBuilder::new();
-        builder
-            .load_cin_str("wo 我\nai 爱\n")
-            .unwrap();
+        builder.load_cin_str("wo 我\nai 爱\n").unwrap();
         let dict = builder.build_fst();
         assert_eq!(dict.entry_count(), 2);
         assert_eq!(dict.lookup("wo").len(), 1);

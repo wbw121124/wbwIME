@@ -120,7 +120,10 @@ impl SmoothEvaluator {
         if probs.is_empty() {
             return 0.0;
         }
-        let sum: f64 = probs.iter().map(|p| if *p > 0.0 { -p.ln() } else { 0.0 }).sum();
+        let sum: f64 = probs
+            .iter()
+            .map(|p| if *p > 0.0 { -p.ln() } else { 0.0 })
+            .sum();
         sum / probs.len() as f64
     }
 

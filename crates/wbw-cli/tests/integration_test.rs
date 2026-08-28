@@ -7,13 +7,11 @@ use wbw_core::context::ContextManager;
 use wbw_core::error::ErrorRecovery;
 use wbw_core::session::SessionManager;
 use wbw_dict::DictBuilder;
-use wbw_imekit::{ImeConfig, ImeHost, KeyAction, KeyMapper, KeyEvent};
+use wbw_imekit::{ImeConfig, ImeHost, KeyAction, KeyEvent, KeyMapper};
 use wbw_matcher::{Matcher, MatcherConfig};
-use wbw_ngram::{NgramTableBuilder, NgramScorer, ScorerConfig};
-use wbw_rank::{RankConfigManager, Ranker, L0Learner};
-use wbw_types::{
-    Candidate, CandidateSource, InputContext, InputMode, L0Config, RankConfig,
-};
+use wbw_ngram::{NgramScorer, NgramTableBuilder, ScorerConfig};
+use wbw_rank::{L0Learner, RankConfigManager, Ranker};
+use wbw_types::{Candidate, CandidateSource, InputContext, InputMode, L0Config, RankConfig};
 
 /// 测试用 .cin 内容
 const TEST_CIN: &str = "\
@@ -52,7 +50,10 @@ fn test_cin_parsing() {
     let entries = parser.parse_str(TEST_CIN).unwrap();
     assert!(!entries.is_empty());
     // 找到 wo
-    let wo = entries.iter().find(|e| e.code == "wo").expect("wo 编码存在");
+    let wo = entries
+        .iter()
+        .find(|e| e.code == "wo")
+        .expect("wo 编码存在");
     assert_eq!(wo.words.len(), 2);
 }
 
@@ -200,8 +201,7 @@ fn test_error_handling() {
     use wbw_core::error::{CoreError, RecoveryStrategy};
     let err = CoreError::ConfigError("测试错误".to_string());
     // Abort 策略应返回错误
-    let abort: Result<i32, _> =
-        ErrorRecovery::try_recover(&err, RecoveryStrategy::Abort, || Ok(0));
+    let abort: Result<i32, _> = ErrorRecovery::try_recover(&err, RecoveryStrategy::Abort, || Ok(0));
     assert!(abort.is_err());
     // Fallback 策略应返回默认值
     let fallback: Result<i32, _> =

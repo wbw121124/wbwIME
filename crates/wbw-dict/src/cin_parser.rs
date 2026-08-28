@@ -97,8 +97,9 @@ impl CinParser {
 
     /// 解析码表文件（返回完整结果，包含模糊规则）
     pub fn parse_full(&self) -> ImeResult<CinParseResult> {
-        let content = fs::read_to_string(&self.path)
-            .map_err(|e| wbw_types::ImeError::IoError(format!("读取文件失败 {}: {}", self.path, e)))?;
+        let content = fs::read_to_string(&self.path).map_err(|e| {
+            wbw_types::ImeError::IoError(format!("读取文件失败 {}: {}", self.path, e))
+        })?;
         self.parse_str_full(&content)
     }
 
@@ -234,8 +235,9 @@ impl CinParser {
 
     /// 验证码表格式（不实际解析，只检查格式）
     pub fn validate(&self) -> ImeResult<()> {
-        let content = fs::read_to_string(&self.path)
-            .map_err(|e| wbw_types::ImeError::IoError(format!("读取文件失败 {}: {}", self.path, e)))?;
+        let content = fs::read_to_string(&self.path).map_err(|e| {
+            wbw_types::ImeError::IoError(format!("读取文件失败 {}: {}", self.path, e))
+        })?;
 
         for (line_num, line) in content.lines().enumerate() {
             let line_num = line_num + 1;

@@ -9,9 +9,9 @@ use std::path::Path;
 use std::ptr;
 
 use wbw_dict::{DictBuilder, FstDict};
-use wbw_imekit::{ImeHost, ImeConfig, ImeState, ImeResponse};
 use wbw_imekit::ime_host::ImeResponseType;
 use wbw_imekit::key_mapper::KeyEvent;
+use wbw_imekit::{ImeConfig, ImeHost, ImeResponse, ImeState};
 use wbw_matcher::{Matcher, MatcherConfig};
 use wbw_rank::Ranker;
 use wbw_types::{Candidate, InputMode, RankConfig};
@@ -327,10 +327,7 @@ pub unsafe extern "C" fn wbw_ime_string_free(s: *mut c_char) {
 
 // ========== 内部辅助 ==========
 
-unsafe fn convert_response(
-    response: &ImeResponse,
-    candidates: &[Candidate],
-) -> *mut WbwImeResult {
+unsafe fn convert_response(response: &ImeResponse, candidates: &[Candidate]) -> *mut WbwImeResult {
     let buffer = CString::new(response.buffer.clone()).unwrap_or_default();
     let confirmed_text = response
         .text
@@ -376,6 +373,8 @@ unsafe fn convert_response(
         candidate_count,
         need_refresh: response.need_refresh,
         need_hide: response.need_hide,
-        confirmed_text: confirmed_text.map(|s| s.into_raw()).unwrap_or(ptr::null_mut()),
+        confirmed_text: confirmed_text
+            .map(|s| s.into_raw())
+            .unwrap_or(ptr::null_mut()),
     }))
 }
