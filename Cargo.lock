@@ -724,6 +724,7 @@ dependencies = [
  "toml",
  "wbw-core",
  "wbw-dict",
+ "wbw-imekit",
  "wbw-matcher",
  "wbw-ngram",
  "wbw-rank",

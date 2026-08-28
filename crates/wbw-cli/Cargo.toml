@@ -19,3 +19,6 @@ wbw-ngram = { path = "../wbw-ngram" }
 toml.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+wbw-imekit = { path = "../wbw-imekit" }
