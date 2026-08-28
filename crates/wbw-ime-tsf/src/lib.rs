@@ -1,451 +1,515 @@
 //! wbwIME Windows TSF 输入法模块
 //!
-//! 编译为 DLL，注册为 Windows Text Services Framework 输入法。
+//! 全手动 vtable COM 实现。不依赖 windows crate 的高层 API。
 //! 注册: regsvr32 wbw_ime_tsf.dll
-//! 使用: 在 Windows 设置中添加 "wbwIME" 输入法
 
-#![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::upper_case_acronyms, dead_code, private_interfaces)]
 
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Mutex;
 
 use wbw_dict::{DictBuilder, FstDict};
 use wbw_imekit::{ImeConfig, ImeHost};
 use wbw_matcher::{Matcher, MatcherConfig};
 use wbw_rank::Ranker;
-use wbw_types::{Candidate, RankConfig};
+use wbw_types::{Candidate, InputContext, InputMode, RankConfig};
 
-// ========== COM 基础设施 ==========
+// ========== 基本类型 ==========
 
 type HRESULT = i32;
 type ULONG = u32;
-type BOOL = i32;
-type REFCLSID = *const Guid;
-type REFIID = *const Guid;
+type DWORD = u32;
 
 const S_OK: HRESULT = 0;
+const S_FALSE: HRESULT = 1;
+const E_FAIL: HRESULT = -2147467259;
+const E_NOTIMPL: HRESULT = -2147467263;
+const E_INVALIDARG: HRESULT = -2147024809;
 const CLASS_E_CLASSNOTAVAILABLE: HRESULT = -2147221231;
-const NOERROR: HRESULT = 0;
+
+// ========== GUID ==========
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Guid {
+struct Guid {
     data1: u32,
     data2: u16,
     data3: u16,
     data4: [u8; 8],
 }
 
-// wbwIME CLSID: {E8A3B0F2-1234-5678-9ABC-DEF012345678}
-const CLSID_WBW_IME: Guid = Guid {
-    data1: 0xE8A3B0F2,
-    data2: 0x1234,
-    data3: 0x5678,
-    data4: [0x9A, 0xBC, 0xDE, 0xF0, 0x12, 0x34, 0x56, 0x78],
-};
-
-const IID_IUNKNOWN: Guid = Guid {
-    data1: 0x00000000,
-    data2: 0x0000,
-    data3: 0x0000,
-    data4: [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
-};
-
-const IID_ICLASS_FACTORY: Guid = Guid {
-    data1: 0x00000001,
-    data2: 0x0000,
-    data3: 0x0000,
-    data4: [0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46],
-};
+const IID_IUNKNOWN: Guid = Guid { data1: 0x00000000, data2: 0x0000, data3: 0x0000, data4: [0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x46] };
+const IID_ICLASSFACTORY: Guid = Guid { data1: 0x00000001, data2: 0x0000, data3: 0x0000, data4: [0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x46] };
+const CLSID_WBW_IME: Guid = Guid { data1: 0xE8A3B0F2, data2: 0x1234, data3: 0x5678, data4: [0x9A,0xBC,0xDE,0xF0,0x12,0x34,0x56,0x78] };
+const IID_ITF_TEXT_INPUT_PROCESSOR_EX: Guid = Guid { data1: 0x86462810, data2: 0x5174, data3: 0x11D4, data4: [0xB6,0x3F,0x83,0x63,0xED,0x0B,0x40,0x71] };
+const IID_ITF_KEY_EVENT_SINK: Guid = Guid { data1: 0xAA80E900, data2: 0x2021, data3: 0x11D2, data4: [0x93,0xE0,0x00,0x60,0xB0,0x67,0xB8,0x6E] };
 
 // ========== 全局状态 ==========
 
 static DLL_REF_COUNT: AtomicI32 = AtomicI32::new(0);
+static IME_STATE: Mutex<Option<ImeState>> = Mutex::new(None);
 
-// ========== VTable 定义 ==========
-
-#[repr(C)]
-struct IUnknownVtbl {
-    query_interface:
-        unsafe extern "system" fn(this: *mut c_void, iid: REFIID, ppv: *mut *mut c_void) -> HRESULT,
-    add_ref: unsafe extern "system" fn(this: *mut c_void) -> ULONG,
-    release: unsafe extern "system" fn(this: *mut c_void) -> ULONG,
-}
-
-#[repr(C)]
-struct IClassFactoryVtbl {
-    query_interface:
-        unsafe extern "system" fn(this: *mut c_void, iid: REFIID, ppv: *mut *mut c_void) -> HRESULT,
-    add_ref: unsafe extern "system" fn(this: *mut c_void) -> ULONG,
-    release: unsafe extern "system" fn(this: *mut c_void) -> ULONG,
-    create_instance: unsafe extern "system" fn(
-        this: *mut c_void,
-        p_unk_outer: *mut c_void,
-        riid: REFIID,
-        ppv_object: *mut *mut c_void,
-    ) -> HRESULT,
-    lock_server: unsafe extern "system" fn(this: *mut c_void, f_lock: BOOL) -> HRESULT,
-}
-
-// ========== TextService ==========
-
-#[repr(C)]
-struct WbwTextService {
-    vtbl: *const IUnknownVtbl,
-    ref_count: AtomicI32,
-    #[allow(dead_code)]
-    ime: Option<WbwImeState>,
-}
-
-struct WbwImeState {
-    #[allow(dead_code)]
-    host: ImeHost,
-    #[allow(dead_code)]
+struct ImeState {
+    _host: ImeHost,
     matcher: Matcher,
-    #[allow(dead_code)]
     ranker: Ranker,
-    #[allow(dead_code)]
     buffer: String,
-    #[allow(dead_code)]
-    active: bool,
-    #[allow(dead_code)]
+    composing: bool,
     candidates: Vec<Candidate>,
+    selected_index: usize,
 }
 
-impl WbwTextService {
-    fn new() -> Self {
-        Self {
-            vtbl: &UNKNOWN_VTBL,
-            ref_count: AtomicI32::new(1),
-            ime: None,
-        }
-    }
-
-    #[allow(dead_code)]
-    fn init_ime(&mut self, dict_path: &str) {
+impl ImeState {
+    fn new(dict_path: &str) -> Option<Self> {
         let path = std::path::Path::new(dict_path);
         let dict = if path.extension().and_then(|e| e.to_str()) == Some("fst") {
-            FstDict::from_file(path).ok()
+            FstDict::from_file(path).ok()?
         } else {
             let mut builder = DictBuilder::new();
-            if builder.load_cin(path).is_err() {
-                return;
-            }
+            builder.load_cin(path).ok()?;
             builder.deduplicate();
             builder.sort();
-            Some(builder.build_fst())
+            builder.build_fst()
         };
+        let matcher = Matcher::with_dict(
+            MatcherConfig { fuzzy_enabled: true, ..MatcherConfig::default() },
+            dict,
+        );
+        let ranker = Ranker::new(RankConfig::default());
+        let host = ImeHost::new(ImeConfig::default());
+        Some(Self { _host: host, matcher, ranker, buffer: String::new(), composing: false, candidates: Vec::new(), selected_index: 0 })
+    }
 
-        if let Some(dict) = dict {
-            let matcher_config = MatcherConfig {
-                fuzzy_enabled: true,
-                ..MatcherConfig::default()
-            };
-            let matcher = Matcher::with_dict(matcher_config, dict);
-            let ranker = Ranker::new(RankConfig::default());
-            let host = ImeHost::new(ImeConfig::default());
+    fn update_candidates(&mut self) {
+        if self.buffer.is_empty() {
+            self.candidates.clear();
+            self.selected_index = 0;
+            return;
+        }
+        let ctx = InputContext {
+            buffer: self.buffer.clone(), cursor: self.buffer.len(),
+            mode: InputMode::Pinyin, selected: Vec::new(), session_id: 0,
+        };
+        let matched = self.matcher.match_input(&ctx);
+        self.candidates = self.ranker.rank(matched);
+        self.selected_index = 0;
+    }
 
-            self.ime = Some(WbwImeState {
-                host,
-                matcher,
-                ranker,
-                buffer: String::new(),
-                active: false,
-                candidates: Vec::new(),
-            });
+    fn process_key(&mut self, vkey: u32) -> Option<String> {
+        match vkey {
+            0x0D => { // Enter
+                if !self.buffer.is_empty() && !self.candidates.is_empty() {
+                    let text = self.candidates[self.selected_index].text.clone();
+                    self.buffer.clear(); self.candidates.clear(); self.selected_index = 0; self.composing = false;
+                    return Some(text);
+                }
+                None
+            }
+            0x08 => { // Backspace
+                if !self.buffer.is_empty() { self.buffer.pop(); self.update_candidates(); self.composing = !self.buffer.is_empty(); }
+                None
+            }
+            0x1B => { // Escape
+                self.buffer.clear(); self.candidates.clear(); self.selected_index = 0; self.composing = false;
+                None
+            }
+            0x20 => { // Space → 选第一个
+                if !self.buffer.is_empty() && !self.candidates.is_empty() {
+                    let text = self.candidates[0].text.clone();
+                    self.buffer.clear(); self.candidates.clear(); self.selected_index = 0; self.composing = false;
+                    return Some(text);
+                }
+                None
+            }
+            0x31..=0x39 => {
+                let idx = (vkey - 0x31) as usize;
+                if !self.buffer.is_empty() && idx < self.candidates.len() {
+                    let text = self.candidates[idx].text.clone();
+                    self.buffer.clear(); self.candidates.clear(); self.selected_index = 0; self.composing = false;
+                    return Some(text);
+                }
+                None
+            }
+            0x30 => {
+                if !self.buffer.is_empty() && self.candidates.len() > 9 {
+                    let text = self.candidates[9].text.clone();
+                    self.buffer.clear(); self.candidates.clear(); self.selected_index = 0; self.composing = false;
+                    return Some(text);
+                }
+                None
+            }
+            0x41..=0x5A => { // A-Z
+                self.buffer.push((vkey as u8 + 0x20) as char);
+                self.update_candidates();
+                self.composing = true;
+                None
+            }
+            _ => None,
         }
     }
 }
 
-static UNKNOWN_VTBL: IUnknownVtbl = IUnknownVtbl {
-    query_interface: tsf_query_interface,
-    add_ref: tsf_add_ref,
-    release: tsf_release,
-};
+// ========== 剪贴板输出 ==========
 
-unsafe extern "system" fn tsf_query_interface(
-    this: *mut c_void,
-    iid: REFIID,
-    ppv: *mut *mut c_void,
-) -> HRESULT {
-    if ppv.is_null() {
-        return CLASS_E_CLASSNOTAVAILABLE;
+fn clipboard_paste(text: &str) {
+    unsafe {
+        let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+        let size = wide.len() * 2;
+
+        use windows_sys::Win32::System::DataExchange::{OpenClipboard, CloseClipboard, EmptyClipboard, SetClipboardData};
+        use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock};
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_0, KEYBDINPUT, KEYEVENTF_KEYUP};
+
+        if OpenClipboard(std::ptr::null_mut()) == 0 { return; }
+        EmptyClipboard();
+        let h_mem = GlobalAlloc(0x0002, size); // GMEM_MOVEABLE
+        if !h_mem.is_null() {
+            let ptr = GlobalLock(h_mem) as *mut u16;
+            if !ptr.is_null() {
+                std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
+                GlobalUnlock(h_mem);
+                SetClipboardData(1, h_mem); // CF_UNICODETEXT
+            }
+        }
+        CloseClipboard();
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let make_key = |vk: u16, scan: u16, flags: u32| INPUT { r#type: 1, Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: vk, wScan: scan, dwFlags: flags, time: 0, dwExtraInfo: 0 } } };
+        let inputs = [make_key(0x11, 0x1D, 0), make_key(0x56, 0x2F, 0), make_key(0x56, 0x2F, KEYEVENTF_KEYUP), make_key(0x11, 0x1D, KEYEVENTF_KEYUP)];
+        SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32);
     }
-    let service = &mut *(this as *mut WbwTextService);
-    let iid_ref = &*iid;
+}
 
-    if *iid_ref == IID_IUNKNOWN {
-        *ppv = this;
-        service.ref_count.fetch_add(1, Ordering::SeqCst);
+// ========== TextService COM 对象 ==========
+
+/// TextService 实现 IUnknown + ITfTextInputProcessorEx + ITfKeyEventSink
+///
+/// vtable 布局:
+/// - [0..2] IUnknown (QI/AddRef/Release)
+/// - [3..5] ITfTextInputProcessorEx (Activate/Deactivate/ActivateEx)
+/// - [6..11] ITfKeyEventSink (OnSetFocus/OnTestKeyDown/OnTestKeyUp/OnKeyDown/OnKeyUp/OnPreservedKey)
+#[repr(C)]
+struct TextService {
+    ref_count: i32,
+    // IUnknown vtable
+    qi: unsafe extern "system" fn(*mut c_void, *const Guid, *mut *mut c_void) -> HRESULT,
+    add_ref: unsafe extern "system" fn(*mut c_void) -> ULONG,
+    release: unsafe extern "system" fn(*mut c_void) -> ULONG,
+    // ITfTextInputProcessorEx vtable
+    tip_activate: unsafe extern "system" fn(*mut c_void, *mut c_void) -> HRESULT,
+    tip_deactivate: unsafe extern "system" fn(*mut c_void) -> HRESULT,
+    tip_activate_ex: unsafe extern "system" fn(*mut c_void, *mut c_void, u32) -> HRESULT,
+    // ITfKeyEventSink vtable
+    ks_on_set_focus: unsafe extern "system" fn(*mut c_void, i32) -> HRESULT,
+    ks_on_test_key_down: unsafe extern "system" fn(*mut c_void, *mut c_void, u32, u32, *mut i32) -> HRESULT,
+    ks_on_test_key_up: unsafe extern "system" fn(*mut c_void, *mut c_void, u32, u32, *mut i32) -> HRESULT,
+    ks_on_key_down: unsafe extern "system" fn(*mut c_void, *mut c_void, u32, u32, *mut i32) -> HRESULT,
+    ks_on_key_up: unsafe extern "system" fn(*mut c_void, *mut c_void, u32, u32, *mut i32) -> HRESULT,
+    ks_on_preserved_key: unsafe extern "system" fn(*mut c_void, *mut c_void, *const Guid, *mut i32) -> HRESULT,
+    // 状态
+    client_id: u32,
+}
+
+unsafe impl Send for TextService {}
+unsafe impl Sync for TextService {}
+
+impl TextService {
+    fn new() -> *mut Self {
+        Box::into_raw(Box::new(Self {
+            ref_count: 1,
+            qi: ts_qi, add_ref: ts_add_ref, release: ts_release,
+            tip_activate: ts_activate, tip_deactivate: ts_deactivate, tip_activate_ex: ts_activate_ex,
+            ks_on_set_focus: ks_set_focus, ks_on_test_key_down: ks_test_key_down,
+            ks_on_test_key_up: ks_test_key_up, ks_on_key_down: ks_key_down,
+            ks_on_key_up: ks_key_up, ks_on_preserved_key: ks_preserved_key,
+            client_id: 0,
+        }))
+    }
+}
+
+// ========== IUnknown ==========
+
+unsafe extern "system" fn ts_qi(this: *mut c_void, riid: *const Guid, ppv: *mut *mut c_void) -> HRESULT {
+    if ppv.is_null() { return E_INVALIDARG; }
+    let iid = unsafe { &*riid };
+    if *iid == IID_IUNKNOWN || *iid == IID_ITF_TEXT_INPUT_PROCESSOR_EX {
+        unsafe { *ppv = this; ts_add_ref(this); }
         return S_OK;
     }
-
-    *ppv = std::ptr::null_mut();
-    CLASS_E_CLASSNOTAVAILABLE
-}
-
-unsafe extern "system" fn tsf_add_ref(this: *mut c_void) -> ULONG {
-    let service = &*(this as *mut WbwTextService);
-    service.ref_count.fetch_add(1, Ordering::SeqCst) as ULONG + 1
-}
-
-unsafe extern "system" fn tsf_release(this: *mut c_void) -> ULONG {
-    let service = &*(this as *mut WbwTextService);
-    let count = service.ref_count.fetch_sub(1, Ordering::SeqCst) - 1;
-    if count <= 0 {
-        drop(Box::from_raw(this as *mut WbwTextService));
+    if *iid == IID_ITF_KEY_EVENT_SINK {
+        unsafe { *ppv = this; ts_add_ref(this); }
+        return S_OK;
     }
-    count as ULONG
+    unsafe { *ppv = std::ptr::null_mut(); }
+    E_NOTIMPL
 }
+
+unsafe extern "system" fn ts_add_ref(this: *mut c_void) -> ULONG {
+    let ts = unsafe { &mut *(this as *mut TextService) };
+    ts.ref_count += 1;
+    ts.ref_count as ULONG
+}
+
+unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
+    let ts = unsafe { &mut *(this as *mut TextService) };
+    ts.ref_count -= 1;
+    let count = ts.ref_count as ULONG;
+    if count == 0 { unsafe { let _ = Box::from_raw(this as *mut TextService); } }
+    count
+}
+
+// ========== ITfTextInputProcessorEx ==========
+
+unsafe extern "system" fn ts_activate(this: *mut c_void, _punk: *mut c_void) -> HRESULT {
+    // TODO: 从 _punk 获取 ITfThreadMgr 并注册 ITfKeyEventSink
+    // 暂时只返回 S_OK
+    let _ = this;
+    S_OK
+}
+
+unsafe extern "system" fn ts_deactivate(this: *mut c_void) -> HRESULT {
+    let _ = this;
+    S_OK
+}
+
+unsafe extern "system" fn ts_activate_ex(this: *mut c_void, punk: *mut c_void, _flags: u32) -> HRESULT {
+    unsafe { ts_activate(this, punk) }
+}
+
+// ========== ITfKeyEventSink ==========
+
+unsafe extern "system" fn ks_set_focus(_this: *mut c_void, _f: i32) -> HRESULT { S_OK }
+
+unsafe extern "system" fn ks_test_key_down(
+    _this: *mut c_void, _pic: *mut c_void, w_param: u32, _l_param: u32, pf_eaten: *mut i32,
+) -> HRESULT {
+    unsafe { *pf_eaten = 0; }
+    let mut state = match IME_STATE.lock() { Ok(s) => s, Err(_) => return S_OK };
+    let state = match state.as_mut() { Some(s) => s, None => return S_OK };
+    let vkey = w_param & 0xFF;
+    if state.composing || (0x41..=0x5A).contains(&vkey) || state.composing && matches!(vkey, 0x08 | 0x0D | 0x1B | 0x20 | 0x30..=0x39) {
+        unsafe { *pf_eaten = 1; }
+    }
+    S_OK
+}
+
+unsafe extern "system" fn ks_test_key_up(
+    _this: *mut c_void, _pic: *mut c_void, _w: u32, _l: u32, pf_eaten: *mut i32,
+) -> HRESULT { unsafe { *pf_eaten = 0; } S_OK }
+
+unsafe extern "system" fn ks_key_down(
+    _this: *mut c_void, _pic: *mut c_void, w_param: u32, _l_param: u32, pf_eaten: *mut i32,
+) -> HRESULT {
+    unsafe { *pf_eaten = 0; }
+    let mut state = match IME_STATE.lock() { Ok(s) => s, Err(_) => return S_OK };
+    let state = match state.as_mut() { Some(s) => s, None => return S_OK };
+    let vkey = w_param & 0xFF;
+    if let Some(text) = state.process_key(vkey) {
+        unsafe { *pf_eaten = 1; }
+        clipboard_paste(&text);
+    } else if state.composing {
+        unsafe { *pf_eaten = 1; }
+    }
+    S_OK
+}
+
+unsafe extern "system" fn ks_key_up(
+    _this: *mut c_void, _pic: *mut c_void, _w: u32, _l: u32, pf_eaten: *mut i32,
+) -> HRESULT { unsafe { *pf_eaten = 0; } S_OK }
+
+unsafe extern "system" fn ks_preserved_key(
+    _this: *mut c_void, _pic: *mut c_void, _rguid: *const Guid, pf_eaten: *mut i32,
+) -> HRESULT { unsafe { *pf_eaten = 0; } S_OK }
 
 // ========== ClassFactory ==========
 
-#[repr(C)]
 struct ClassFactory {
-    vtbl: *const IClassFactoryVtbl,
-    ref_count: AtomicI32,
+    ref_count: i32,
 }
 
 impl ClassFactory {
-    fn new() -> Self {
-        Self {
-            vtbl: &CLASSFACTORY_VTBL,
-            ref_count: AtomicI32::new(1),
-        }
-    }
+    fn new() -> *mut Self { Box::into_raw(Box::new(Self { ref_count: 1 })) }
 }
 
-static CLASSFACTORY_VTBL: IClassFactoryVtbl = IClassFactoryVtbl {
-    query_interface: cf_query_interface,
-    add_ref: cf_add_ref,
-    release: cf_release,
-    create_instance: cf_create_instance,
-    lock_server: cf_lock_server,
-};
-
-unsafe extern "system" fn cf_query_interface(
-    this: *mut c_void,
-    iid: REFIID,
-    ppv: *mut *mut c_void,
-) -> HRESULT {
-    if ppv.is_null() {
-        return CLASS_E_CLASSNOTAVAILABLE;
-    }
-    let factory = &mut *(this as *mut ClassFactory);
-    let iid_ref = &*iid;
-
-    if *iid_ref == IID_IUNKNOWN || *iid_ref == IID_ICLASS_FACTORY {
-        *ppv = this;
-        factory.ref_count.fetch_add(1, Ordering::SeqCst);
+unsafe extern "system" fn cf_qi(this: *mut c_void, riid: *const Guid, ppv: *mut *mut c_void) -> HRESULT {
+    if ppv.is_null() { return E_INVALIDARG; }
+    let iid = unsafe { &*riid };
+    if *iid == IID_IUNKNOWN || *iid == IID_ICLASSFACTORY {
+        unsafe { *ppv = this; cf_add_ref(this); }
         return S_OK;
     }
-
-    *ppv = std::ptr::null_mut();
+    unsafe { *ppv = std::ptr::null_mut(); }
     CLASS_E_CLASSNOTAVAILABLE
 }
 
 unsafe extern "system" fn cf_add_ref(this: *mut c_void) -> ULONG {
-    let factory = &*(this as *mut ClassFactory);
-    factory.ref_count.fetch_add(1, Ordering::SeqCst) as ULONG + 1
+    let f = unsafe { &mut *(this as *mut ClassFactory) };
+    f.ref_count += 1;
+    f.ref_count as ULONG
 }
 
 unsafe extern "system" fn cf_release(this: *mut c_void) -> ULONG {
-    let factory = &*(this as *mut ClassFactory);
-    let count = factory.ref_count.fetch_sub(1, Ordering::SeqCst) - 1;
-    if count <= 0 {
-        drop(Box::from_raw(this as *mut ClassFactory));
-    }
-    count as ULONG
+    let f = unsafe { &mut *(this as *mut ClassFactory) };
+    f.ref_count -= 1;
+    let count = f.ref_count as ULONG;
+    if count == 0 { unsafe { let _ = Box::from_raw(this as *mut ClassFactory); } }
+    count
 }
 
 unsafe extern "system" fn cf_create_instance(
-    _this: *mut c_void,
-    _p_unk_outer: *mut c_void,
-    riid: REFIID,
-    ppv_object: *mut *mut c_void,
+    _this: *mut c_void, _outer: *mut c_void, riid: *const Guid, ppv: *mut *mut c_void,
 ) -> HRESULT {
-    if ppv_object.is_null() {
-        return CLASS_E_CLASSNOTAVAILABLE;
+    if ppv.is_null() { return E_INVALIDARG; }
+    let iid = unsafe { &*riid };
+    if *iid == IID_IUNKNOWN || *iid == IID_ITF_TEXT_INPUT_PROCESSOR_EX || *iid == IID_ITF_KEY_EVENT_SINK {
+        let ts = TextService::new();
+        unsafe { *ppv = ts as *mut c_void; }
+        return S_OK;
     }
-
-    let iid_ref = &*riid;
-    if *iid_ref != IID_IUNKNOWN {
-        *ppv_object = std::ptr::null_mut();
-        return CLASS_E_CLASSNOTAVAILABLE;
-    }
-
-    let service = Box::new(WbwTextService::new());
-    let ptr = Box::into_raw(service);
-    *ppv_object = ptr as *mut c_void;
-    S_OK
+    unsafe { *ppv = std::ptr::null_mut(); }
+    E_NOTIMPL
 }
 
-unsafe extern "system" fn cf_lock_server(_this: *mut c_void, _f_lock: BOOL) -> HRESULT {
-    S_OK
-}
+unsafe extern "system" fn cf_lock_server(_this: *mut c_void, _lock: i32) -> HRESULT { S_OK }
 
 // ========== DLL 导出 ==========
 
-/// DLL 入口点。由 Windows 调用。
+/// DLL 入口点
 ///
 /// # Safety
-/// `hinst` 和 `reserved` 由系统传入，必须为有效的指针或 null。
+/// 由 Windows 调用。
 #[no_mangle]
-pub unsafe extern "system" fn DllMain(
-    _hinst: *mut c_void,
-    reason: u32,
-    _reserved: *mut c_void,
-) -> BOOL {
+pub unsafe extern "system" fn DllMain(_hinst: *mut c_void, reason: u32, _reserved: *mut c_void) -> i32 {
     match reason {
-        1 => {
-            // DLL_PROCESS_ATTACH
+        1 => { // DLL_PROCESS_ATTACH
             DLL_REF_COUNT.store(1, Ordering::SeqCst);
+            let home = std::env::var("USERPROFILE").unwrap_or_default();
+            let dict_path = std::path::PathBuf::from(&home)
+                .join("AppData").join("Roaming").join("wbwIME").join("dict.fst");
+            if dict_path.exists() {
+                if let Some(state) = ImeState::new(&dict_path.to_string_lossy()) {
+                    *IME_STATE.lock().unwrap() = Some(state);
+                }
+            }
         }
-        0 => {
-            // DLL_PROCESS_DETACH
+        0 => { // DLL_PROCESS_DETACH
             DLL_REF_COUNT.store(0, Ordering::SeqCst);
+            *IME_STATE.lock().unwrap() = None;
         }
         _ => {}
     }
     1 // TRUE
 }
 
-/// COM 类工厂入口点。由 COM 运行时调用。
+/// COM 类工厂入口
 ///
 /// # Safety
-/// `rclsid` 和 `ppv` 由系统传入，必须为有效的指针。
+/// 参数由 COM 运行时传入。
 #[no_mangle]
 pub unsafe extern "system" fn DllGetClassObject(
-    rclsid: REFCLSID,
-    _riid: REFIID,
-    ppv: *mut *mut c_void,
+    rclsid: *const Guid, _riid: *const Guid, ppv: *mut *mut c_void,
 ) -> HRESULT {
-    if ppv.is_null() {
-        return CLASS_E_CLASSNOTAVAILABLE;
-    }
-
-    let clsid = &*rclsid;
+    if rclsid.is_null() || ppv.is_null() { return E_INVALIDARG; }
+    let clsid = unsafe { &*rclsid };
     if *clsid != CLSID_WBW_IME {
-        *ppv = std::ptr::null_mut();
+        unsafe { *ppv = std::ptr::null_mut(); }
         return CLASS_E_CLASSNOTAVAILABLE;
     }
-
-    let factory = Box::new(ClassFactory::new());
-    let ptr = Box::into_raw(factory);
-    *ppv = ptr as *mut c_void;
+    let factory = ClassFactory::new();
+    unsafe { *ppv = factory as *mut c_void; }
     S_OK
 }
 
-/// 查询 DLL 是否可以卸载。
+/// 查询 DLL 是否可卸载
 ///
 /// # Safety
-/// 无特殊安全要求，由 COM 运行时调用。
+/// 无特殊安全要求。
 #[no_mangle]
 pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
-    if DLL_REF_COUNT.load(Ordering::SeqCst) == 0 {
-        S_OK
-    } else {
-        1 // S_FALSE
-    }
+    if DLL_REF_COUNT.load(Ordering::SeqCst) == 0 { S_OK } else { S_FALSE }
 }
 
-/// 注册 COM 服务器和 TSF 输入法（需要管理员权限）。
-///
-/// `regsvr32 wbw_ime_tsf.dll`
+/// 注册 COM 服务器 + TSF TIP
 ///
 /// # Safety
-/// 写入注册表需要管理员权限，操作 HKLM 根键。
+/// 写入注册表需要管理员权限。
 #[no_mangle]
 pub unsafe extern "system" fn DllRegisterServer() -> HRESULT {
-    let clsid = "{E8A3B0F2-1234-5678-9ABC-DEF012345678}";
-    let name = "wbwIME";
+    let dll_path = get_dll_path();
+    let dll_path_str = dll_path.to_string_lossy();
 
-    let com_key = format!("CLSID\\{}", clsid);
-    let _ = set_registry_value(&com_key, "", name);
-    let _ = set_registry_value(&com_key, "InprocServer32", get_dll_path().to_str().unwrap_or(""));
+    // COM CLSID 注册
+    let clsid = "E8A3B0F2-1234-5678-9ABC-DEF012345678";
+    let _ = set_reg(&format!("CLSID\\{{{}}}", clsid), "", "wbwIME");
+    let _ = set_reg(&format!("CLSID\\{{{}}}\\InprocServer32", clsid), "", &dll_path_str);
 
-    let tsf_key = format!("SOFTWARE\\Microsoft\\CTF\\TIP\\{{{}}}", clsid);
-    let _ = set_registry_value(&tsf_key, "Description", name);
+    // TSF TIP 注册
+    let tip_key = format!("SOFTWARE\\Microsoft\\CTF\\TIP\\{{{}}}\\LanguageProfile\\0x00000804\\{{{}}}", clsid, clsid);
+    let _ = set_reg(&tip_key, "Description", "wbwIME Pinyin Input");
+    let _ = set_reg_dword(&tip_key, "Enable", 1);
 
-    let profile_key = format!(
-        "{}\\LanguageProfile\\0x00000804\\{{00000000-0000-0000-0000-000000000000}}",
-        tsf_key
-    );
-    let _ = set_registry_value(&profile_key, "Description", name);
+    // Keyboard Layouts 注册
+    let kl_key = "SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\E0200804";
+    let _ = set_reg(kl_key, "Ime File", &dll_path_str);
+    let _ = set_reg(kl_key, "Layout Text", "wbwIME");
+    let _ = set_reg_dword(kl_key, "Language Id", 0x0804);
 
-    NOERROR
+    S_OK
 }
 
-/// 取消注册。
+/// 取消注册
 ///
 /// # Safety
-/// 删除注册表项需要管理员权限，操作 HKLM 根键。
+/// 删除注册表项需要管理员权限。
 #[no_mangle]
 pub unsafe extern "system" fn DllUnregisterServer() -> HRESULT {
-    let clsid = "{E8A3B0F2-1234-5678-9ABC-DEF012345678}";
-    let _ = delete_registry_key(&format!("CLSID\\{}", clsid));
-    let _ = delete_registry_key(&format!("SOFTWARE\\Microsoft\\CTF\\TIP\\{{{}}}", clsid));
-    NOERROR
+    let clsid = "E8A3B0F2-1234-5678-9ABC-DEF012345678";
+    let _ = del_reg(&format!("CLSID\\{{{}}}", clsid));
+    let _ = del_reg(&format!("SOFTWARE\\Microsoft\\CTF\\TIP\\{{{}}}", clsid));
+    let _ = del_reg("SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\E0200804");
+    S_OK
 }
 
 // ========== 辅助函数 ==========
 
 fn get_dll_path() -> std::path::PathBuf {
-    let mut path = std::path::PathBuf::new();
     unsafe {
         let mut buf = [0u16; 260];
         let len = windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW(
-            std::ptr::null_mut(),
-            buf.as_mut_ptr(),
-            260,
+            std::ptr::null_mut(), buf.as_mut_ptr(), 260,
         );
-        if len > 0 {
-            let s = String::from_utf16_lossy(&buf[..len as usize]);
-            path = std::path::PathBuf::from(s);
-        }
+        if len > 0 { std::path::PathBuf::from(String::from_utf16_lossy(&buf[..len as usize])) }
+        else { std::path::PathBuf::new() }
     }
-    path
 }
 
-unsafe fn set_registry_value(key: &str, value_name: &str, value: &str) -> Result<(), ()> {
+unsafe fn set_reg(key: &str, name: &str, value: &str) -> Result<(), ()> {
     use windows_sys::Win32::System::Registry::*;
-
-    let key_wide: Vec<u16> = key.encode_utf16().chain(std::iter::once(0)).collect();
-    let name_wide: Vec<u16> = value_name.encode_utf16().chain(std::iter::once(0)).collect();
-    let value_wide: Vec<u16> = value.encode_utf16().chain(std::iter::once(0)).collect();
-
+    let key_w: Vec<u16> = key.encode_utf16().chain(std::iter::once(0)).collect();
+    let name_w: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+    let val_w: Vec<u16> = value.encode_utf16().chain(std::iter::once(0)).collect();
     let mut hkey: HKEY = std::ptr::null_mut();
-    let result = RegCreateKeyW(HKEY_LOCAL_MACHINE, key_wide.as_ptr(), &mut hkey);
-
-    if result != 0 {
-        return Err(());
-    }
-
-    let ret = RegSetValueExW(
-        hkey,
-        name_wide.as_ptr(),
-        0,
-        REG_SZ,
-        value_wide.as_ptr() as *const u8,
-        (value_wide.len() * 2) as u32,
-    );
-
+    if RegCreateKeyW(HKEY_LOCAL_MACHINE, key_w.as_ptr(), &mut hkey) != 0 { return Err(()); }
+    let ret = RegSetValueExW(hkey, name_w.as_ptr(), 0, REG_SZ, val_w.as_ptr() as *const u8, (val_w.len() * 2) as u32);
     RegCloseKey(hkey);
-    if ret != 0 {
-        Err(())
-    } else {
-        Ok(())
-    }
+    if ret != 0 { Err(()) } else { Ok(()) }
 }
 
-unsafe fn delete_registry_key(key: &str) -> Result<(), ()> {
+unsafe fn set_reg_dword(key: &str, name: &str, value: u32) -> Result<(), ()> {
     use windows_sys::Win32::System::Registry::*;
+    let key_w: Vec<u16> = key.encode_utf16().chain(std::iter::once(0)).collect();
+    let name_w: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut hkey: HKEY = std::ptr::null_mut();
+    if RegCreateKeyW(HKEY_LOCAL_MACHINE, key_w.as_ptr(), &mut hkey) != 0 { return Err(()); }
+    let ret = RegSetValueExW(hkey, name_w.as_ptr(), 0, 4, &value as *const u32 as *const u8, 4); // REG_DWORD = 4
+    RegCloseKey(hkey);
+    if ret != 0 { Err(()) } else { Ok(()) }
+}
 
-    let key_wide: Vec<u16> = key.encode_utf16().chain(std::iter::once(0)).collect();
-    let result = RegDeleteKeyW(HKEY_LOCAL_MACHINE, key_wide.as_ptr());
-    if result != 0 {
-        Err(())
-    } else {
-        Ok(())
-    }
+unsafe fn del_reg(key: &str) -> Result<(), ()> {
+    use windows_sys::Win32::System::Registry::*;
+    let key_w: Vec<u16> = key.encode_utf16().chain(std::iter::once(0)).collect();
+    if RegDeleteKeyW(HKEY_LOCAL_MACHINE, key_w.as_ptr()) != 0 { Err(()) } else { Ok(()) }
 }
