@@ -127,13 +127,13 @@ impl ErrorRecovery {
     {
         match strategy {
             RecoveryStrategy::Retry => {
-                // TODO: 实现重试逻辑
-                todo!("实现错误重试")
+                // 重试一次：调用 fallback() 进行重试（F 为 FnOnce，只能调用一次）
+                fallback().or_else(|_| Err(error.clone()))
             }
             RecoveryStrategy::Fallback => fallback(),
             RecoveryStrategy::Ignore => {
-                // TODO: 实现忽略逻辑
-                todo!("实现错误忽略")
+                // 忽略错误并返回 fallback 默认值（泛型 T 无法显式构造，故调用 fallback() 作为折中）
+                fallback()
             }
             RecoveryStrategy::Abort => Err(error.clone()),
         }
@@ -141,13 +141,17 @@ impl ErrorRecovery {
 
     /// 记录错误日志
     pub fn log_error(error: &CoreError, context: Option<&ErrorContext>) {
-        // TODO: 实现错误日志记录
-        todo!("实现错误日志记录")
+        match context {
+            Some(ctx) => eprintln!("[错误日志] {} 上下文: {}", error, ctx),
+            None => eprintln!("[错误日志] {}", error),
+        }
     }
 
     /// 发送错误报告
     pub fn report_error(error: &CoreError, context: Option<&ErrorContext>) {
-        // TODO: 实现错误报告
-        todo!("实现错误报告")
+        match context {
+            Some(ctx) => eprintln!("错误报告: {}\n  上下文: {}", error, ctx),
+            None => eprintln!("错误报告: {}", error),
+        }
     }
 }

@@ -1,9 +1,7 @@
 //! Session 管理模块
 
 use std::collections::HashMap;
-use std::fmt;
-use serde::{Deserialize, Serialize};
-use wbw_types::{Session, SessionConfig, ImeResult, Candidate};
+use wbw_types::SessionConfig;
 use crate::context::{ContextManager, ContextSnapshot};
 use crate::candidate::CandidateList;
 
@@ -156,8 +154,9 @@ impl SessionState {
     pub fn restore_snapshot(&mut self, index: usize) -> bool {
         if let Some(snapshot) = self.snapshots.get(index) {
             let ctx = snapshot.to_input_context(self.id);
-            self.context = ContextManager::new(self.id);
-            // TODO: 恢复上下文状态
+            let mut ctx_mgr = ContextManager::new(self.id);
+            *ctx_mgr.current_mut() = ctx;
+            self.context = ctx_mgr;
             true
         } else {
             false

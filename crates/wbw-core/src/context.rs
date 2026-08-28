@@ -1,6 +1,5 @@
 //! 输入上下文模块
 
-use std::fmt;
 use serde::{Deserialize, Serialize};
 use wbw_types::{InputContext, InputMode, ImeResult};
 
@@ -60,7 +59,7 @@ impl ContextManager {
                 .map(|(i, _)| i)
                 .unwrap_or(0);
             
-            let removed = self.current.buffer[prev_boundary..self.current.cursor].to_string();
+            let _removed = self.current.buffer[prev_boundary..self.current.cursor].to_string();
             self.current.buffer.truncate(prev_boundary);
             self.current.cursor = prev_boundary;
             

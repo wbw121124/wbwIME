@@ -1,8 +1,7 @@
 //! 候选数据结构模块
 
-use std::fmt;
 use serde::{Deserialize, Serialize};
-use wbw_types::{Candidate, CandidateSource, ImeResult};
+use wbw_types::{Candidate, CandidateSource};
 
 /// 候选词列表
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -272,7 +271,7 @@ mod tests {
     #[test]
     fn test_candidate_list_pagination() {
         let candidates = test_candidates();
-        let mut list = CandidateList::new(candidates, 0, 10);
+        let list = CandidateList::new(candidates, 0, 10);
         assert_eq!(list.len(), 2);
         assert!(!list.has_next);
         assert!(!list.has_prev);

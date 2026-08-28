@@ -16,7 +16,7 @@ Rust 自构建输入法引擎
 
 ## 项目结构
 
-```
+```plain
 wbwIME/
 ├── Cargo.toml              # 工作区配置
 ├── crates/
@@ -36,7 +36,7 @@ wbwIME/
 
 ## Crate 依赖关系
 
-```
+```plain
 wbw-types (共享类型)
   ↑
 wbw-dict ← wbw-matcher ← wbw-core
@@ -94,7 +94,7 @@ smooth = 0.1    # 平滑参数
 
 支持标准 .cin 格式，每行 `编码 汉字`，`%` 开头为注释行：
 
-```
+```cin
 % 示例码表
 wo 我
 wo 喔
