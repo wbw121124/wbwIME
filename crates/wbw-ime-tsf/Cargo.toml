@@ -1,0 +1,27 @@
+[package]
+name = "wbw-ime-tsf"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "wbwIME Windows TSF 输入法模块 — 注册为系统输入法"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wbw-types = { path = "../wbw-types" }
+wbw-dict = { path = "../wbw-dict" }
+wbw-matcher = { path = "../wbw-matcher" }
+wbw-rank = { path = "../wbw-rank" }
+wbw-imekit = { path = "../wbw-imekit" }
+
+[dependencies.windows-sys]
+version = "0.59"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemServices",
+    "Win32_System_Registry",
+]

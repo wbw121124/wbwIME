@@ -72,6 +72,16 @@ else
     echo "  警告: 未找到 .so: $SO_FILE" >&2
 fi
 
+# 复制 fbterm 输入法服务端
+FBTERM_BIN="$TARGET_DIR/wbw-ime-fbterm"
+if [ -f "$FBTERM_BIN" ]; then
+    cp "$FBTERM_BIN" "$STAGING_DIR/"
+    chmod +x "$STAGING_DIR/wbw-ime-fbterm"
+    echo "  已包含: wbw-ime-fbterm"
+else
+    echo "  警告: 未找到 fbterm 二进制: $FBTERM_BIN" >&2
+fi
+
 # 复制 C 头文件
 HEADER="$PROJECT_ROOT/crates/wbw-ime-native/include/wbw_ime_native.h"
 if [ -f "$HEADER" ]; then

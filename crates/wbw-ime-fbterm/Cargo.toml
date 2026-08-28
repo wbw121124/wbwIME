@@ -1,0 +1,18 @@
+[package]
+name = "wbw-ime-fbterm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "wbwIME fbterm 输入法服务端 — 通过 fbterm IM 协议提供中文输入"
+
+[[bin]]
+name = "wbw-ime-fbterm"
+path = "src/main.rs"
+
+[dependencies]
+wbw-types = { path = "../wbw-types" }
+wbw-dict = { path = "../wbw-dict" }
+wbw-matcher = { path = "../wbw-matcher" }
+wbw-rank = { path = "../wbw-rank" }
+libc = "0.2"

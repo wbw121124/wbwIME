@@ -76,6 +76,15 @@ if (Test-Path $dllSrc) {
     Write-Host "  警告: 未找到 DLL: $dllSrc" -ForegroundColor DarkYellow
 }
 
+# 复制 TSF 输入法 DLL
+$tsfSrc = Join-Path $ProjectRoot "$targetDir/wbw_ime_tsf.dll"
+if (Test-Path $tsfSrc) {
+    Copy-Item $tsfSrc $stagingDir
+    Write-Host "  已包含: wbw_ime_tsf.dll"
+} else {
+    Write-Host "  警告: 未找到 TSF DLL: $tsfSrc" -ForegroundColor DarkYellow
+}
+
 # 复制 C 头文件
 $headerSrc = Join-Path $ProjectRoot "crates/wbw-ime-native/include/wbw_ime_native.h"
 if (Test-Path $headerSrc) {

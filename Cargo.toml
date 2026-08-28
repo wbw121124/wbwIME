@@ -9,6 +9,8 @@ members = [
     "crates/wbw-ngram",
     "crates/wbw-imekit",
     "crates/wbw-ime-native",
+    "crates/wbw-ime-fbterm",
+    "crates/wbw-ime-tsf",
     "crates/wbw-cli",
 ]
 
