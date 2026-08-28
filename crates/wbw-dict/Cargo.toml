@@ -10,6 +10,4 @@ wbw-types = { path = "../wbw-types" }
 fst.workspace = true
 memmap2.workspace = true
 serde.workspace = true
-anyhow.workspace = true
 thiserror.workspace = true
-tempfile = "3.8"

@@ -2,11 +2,10 @@
 //!
 //! 提供候选词排序功能，支持加权排序、L0 动态学习。
 
-use std::num::NonZeroUsize;
 use std::time::Instant;
 use wbw_types::{Candidate, L0Config, RankConfig};
 use crate::config::RankConfigManager;
-use crate::weight::{WeightCalculator, WeightNormalizer};
+use crate::weight::WeightCalculator;
 use crate::l0_learn::L0Learner;
 
 /// 排序器
@@ -14,7 +13,6 @@ pub struct Ranker {
     config_manager: RankConfigManager,
     weight_calculator: WeightCalculator,
     l0_learner: L0Learner,
-    cache: Option<lru::LruCache<String, Vec<Candidate>>>,
 }
 
 impl Ranker {
@@ -28,7 +26,6 @@ impl Ranker {
             config_manager: RankConfigManager::from_memory(config),
             weight_calculator,
             l0_learner,
-            cache: Some(lru::LruCache::new(NonZeroUsize::new(1000).unwrap())),
         }
     }
 
@@ -43,7 +40,6 @@ impl Ranker {
             config_manager,
             weight_calculator,
             l0_learner,
-            cache: Some(lru::LruCache::new(NonZeroUsize::new(1000).unwrap())),
         }
     }
 
@@ -64,10 +60,6 @@ impl Ranker {
 
         // 按权重降序排序
         weighted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // 归一化权重
-        let mut weights: Vec<f64> = weighted.iter().map(|(_, w)| *w).collect();
-        WeightNormalizer::min_max_normalize(&mut weights);
 
         // 提取排序后的候选词
         let result: Vec<Candidate> = weighted.into_iter().map(|(c, _)| c).collect();
@@ -145,13 +137,6 @@ impl Ranker {
     pub fn l0_learner_mut(&mut self) -> &mut L0Learner {
         &mut self.l0_learner
     }
-
-    /// 清除缓存
-    pub fn clear_cache(&mut self) {
-        if let Some(cache) = &mut self.cache {
-            cache.clear();
-        }
-    }
 }
 
 /// 排序策略
@@ -173,14 +158,12 @@ pub struct RankResult {
 /// 排序器构建器
 pub struct RankerBuilder {
     config: RankConfig,
-    cache_size: Option<usize>,
 }
 
 impl RankerBuilder {
     pub fn new() -> Self {
         Self {
             config: RankConfig::default(),
-            cache_size: Some(1000),
         }
     }
 
@@ -189,19 +172,8 @@ impl RankerBuilder {
         self
     }
 
-    pub fn with_cache_size(mut self, size: usize) -> Self {
-        self.cache_size = Some(size);
-        self
-    }
-
     pub fn build(self) -> Ranker {
-        let mut ranker = Ranker::new(self.config);
-        if let Some(cache_size) = self.cache_size {
-            ranker.cache = Some(lru::LruCache::new(
-                NonZeroUsize::new(cache_size.max(1)).expect("cache_size 已 clamp 到 >= 1"),
-            ));
-        }
-        ranker
+        Ranker::new(self.config)
     }
 }
 
@@ -263,8 +235,7 @@ mod tests {
     #[test]
     fn test_builder() {
         let ranker = RankerBuilder::new()
-            .with_cache_size(500)
             .build();
-        assert!(ranker.cache.is_some());
+        assert_eq!(ranker.config_manager().config().max_candidates, 10);
     }
 }

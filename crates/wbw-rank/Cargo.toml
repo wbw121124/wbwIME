@@ -7,9 +7,7 @@ license.workspace = true
 
 [dependencies]
 wbw-types = { path = "../wbw-types" }
-wbw-ngram = { path = "../wbw-ngram" }
 serde.workspace = true
 serde_json.workspace = true
 lru.workspace = true
-anyhow.workspace = true
 thiserror.workspace = true

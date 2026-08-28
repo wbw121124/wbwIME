@@ -224,7 +224,7 @@ impl Default for FstDictBuilder {
 }
 
 /// 计算两个字符串的编辑距离（Levenshtein 距离）
-fn edit_distance(s1: &str, s2: &str) -> usize {
+pub fn edit_distance(s1: &str, s2: &str) -> usize {
     let s1: Vec<char> = s1.chars().collect();
     let s2: Vec<char> = s2.chars().collect();
     let m = s1.len();

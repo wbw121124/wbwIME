@@ -8,7 +8,4 @@ license.workspace = true
 [dependencies]
 wbw-types = { path = "../wbw-types" }
 wbw-dict = { path = "../wbw-dict" }
-phf.workspace = true
 lru.workspace = true
-anyhow.workspace = true
-thiserror.workspace = true

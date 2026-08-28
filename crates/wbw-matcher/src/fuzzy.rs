@@ -165,31 +165,10 @@ impl FuzzyMatcher {
     }
 
     /// 计算编辑距离（Levenshtein 距离）
+    ///
+    /// 复用 `wbw-dict` 中的同一实现，避免重复。
     pub fn edit_distance(s1: &str, s2: &str) -> usize {
-        let s1: Vec<char> = s1.chars().collect();
-        let s2: Vec<char> = s2.chars().collect();
-        let m = s1.len();
-        let n = s2.len();
-
-        let mut dp = vec![vec![0usize; n + 1]; m + 1];
-
-        for (i, row) in dp.iter_mut().enumerate() {
-            row[0] = i;
-        }
-        for (j, cell) in dp[0].iter_mut().enumerate() {
-            *cell = j;
-        }
-
-        for i in 1..=m {
-            for j in 1..=n {
-                let cost = if s1[i - 1] == s2[j - 1] { 0 } else { 1 };
-                dp[i][j] = (dp[i - 1][j] + 1)
-                    .min(dp[i][j - 1] + 1)
-                    .min(dp[i - 1][j - 1] + cost);
-            }
-        }
-
-        dp[m][n]
+        wbw_dict::edit_distance(s1, s2)
     }
 
     /// 检查是否模糊匹配

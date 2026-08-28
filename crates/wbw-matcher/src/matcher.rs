@@ -7,7 +7,7 @@ use std::time::Instant;
 use wbw_dict::entry::{DictEntry, DictSource};
 use wbw_dict::{CinParser, FstDict, FstDictBuilder};
 use wbw_types::{Candidate, CandidateSource, InputContext};
-use crate::fuzzy::{FuzzyConfig, FuzzyRule};
+use crate::fuzzy::{FuzzyConfig, FuzzyMatcher, FuzzyRule};
 
 /// 匹配器配置
 #[derive(Debug, Clone)]
@@ -42,6 +42,7 @@ impl Default for MatcherConfig {
 pub struct Matcher {
     config: MatcherConfig,
     dict: Option<FstDict>,
+    fuzzy_matcher: FuzzyMatcher,
     cache: Option<lru::LruCache<String, Vec<Candidate>>>,
 }
 
@@ -53,9 +54,11 @@ impl Matcher {
         } else {
             None
         };
+        let fuzzy_matcher = FuzzyMatcher::new(config.fuzzy_config.clone());
         Self {
             config,
             dict: None,
+            fuzzy_matcher,
             cache,
         }
     }
@@ -67,9 +70,11 @@ impl Matcher {
         } else {
             None
         };
+        let fuzzy_matcher = FuzzyMatcher::new(config.fuzzy_config.clone());
         Self {
             config,
             dict: Some(dict),
+            fuzzy_matcher,
             cache,
         }
     }
@@ -209,15 +214,19 @@ impl Matcher {
             .collect()
     }
 
-    /// 模糊匹配：通过编辑距离（Levenshtein）在词典中查找相近编码
+    /// 模糊匹配：编辑距离（Levenshtein）查找 + 拼音规则变体查找
     pub fn fuzzy_lookup(&self, code: &str) -> Vec<Candidate> {
+        if !self.config.fuzzy_enabled {
+            return Vec::new();
+        }
         let dict = match &self.dict {
             Some(d) => d,
             None => return Vec::new(),
         };
 
         let max_edit = self.config.fuzzy_config.max_edit_distance;
-        dict.fuzzy_lookup(code, max_edit)
+        let mut candidates: Vec<Candidate> = dict
+            .fuzzy_lookup(code, max_edit)
             .into_iter()
             .map(|(entry, dist)| {
                 // 分数随编辑距离增大而降低
@@ -235,7 +244,30 @@ impl Matcher {
                     user_weight: None,
                 }
             })
-            .collect()
+            .collect();
+
+        // 规则变体（如 z→zh、ei→ie 对调等编辑距离引擎覆盖不到的错法）
+        for variant in self.fuzzy_matcher.generate_variants(code) {
+            if variant == code {
+                continue;
+            }
+            for entry in dict.lookup(&variant) {
+                candidates.push(Candidate {
+                    text: entry.word.clone(),
+                    code: entry.code.clone(),
+                    score: 80.0,
+                    source: CandidateSource::System,
+                    ngram_score: None,
+                    user_weight: None,
+                });
+            }
+        }
+
+        // 按 (text, code) 去重并保留最高分
+        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        let mut seen = std::collections::HashSet::new();
+        candidates.retain(|c| seen.insert((c.text.clone(), c.code.clone())));
+        candidates
     }
 
     /// 清除缓存
@@ -410,6 +442,24 @@ mod tests {
         assert!(!results.is_empty(), "缺字符编码应通过编辑距离模糊匹配到");
         assert_eq!(results[0].text, "最大流");
         assert_eq!(results[0].code, "zdliu");
+    }
+
+    #[test]
+    fn test_fuzzy_lookup_transposition_rule() {
+        // 对调规则 ei→ie 编辑距离为 2，编辑距离引擎(默认 max=1)覆盖不到，
+        // 只能由规则变体引擎命中，验证接线生效。
+        let mut builder = FstDictBuilder::new();
+        builder.add_entries(vec![DictEntry {
+            code: "qie".into(),
+            word: "切".into(),
+            freq: 100,
+            source: DictSource::Base,
+        }]);
+        let dict = builder.build(DictSource::Base);
+        let matcher = Matcher::with_dict(MatcherConfig::default(), dict);
+        let results = matcher.fuzzy_lookup("qei");
+        assert!(!results.is_empty(), "对调规则 ei→ie 应通过规则引擎命中");
+        assert_eq!(results[0].text, "切");
     }
 
     #[test]
