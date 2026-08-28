@@ -3,7 +3,7 @@
 use std::path::Path;
 use thiserror::Error;
 use serde::{Deserialize, Serialize};
-use wbw_types::{ImeError, ImeResult, L0Config, Candidate, CandidateSource};
+use wbw_types::{ImeResult, L0Config, Candidate, CandidateSource};
 
 /// L0 学习错误类型
 #[derive(Error, Debug)]
@@ -31,6 +31,15 @@ pub struct L0Learner {
     counters: std::collections::HashMap<String, u32>,
 }
 
+/// L0 快照数据结构（用于持久化）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct L0Snapshot {
+    /// 学习数据
+    data: Vec<LearningEntry>,
+    /// 计数器
+    counters: std::collections::HashMap<String, u32>,
+}
+
 impl L0Learner {
     /// 创建新的学习器
     pub fn new(config: L0Config) -> Self {
@@ -43,8 +52,15 @@ impl L0Learner {
 
     /// 从快照加载
     pub fn from_snapshot(config: L0Config, path: &Path) -> ImeResult<Self> {
-        // TODO: 实现快照加载逻辑
-        todo!("实现 L0 快照加载")
+        let contents = std::fs::read_to_string(path)
+            .map_err(|e| wbw_types::ImeError::IoError(format!("快照读取失败: {} ({})", path.display(), e)))?;
+        let snapshot: L0Snapshot = serde_json::from_str(&contents)
+            .map_err(|e| wbw_types::ImeError::ConfigError(format!("快照解析失败: {}", e)))?;
+        Ok(Self {
+            config,
+            data: snapshot.data,
+            counters: snapshot.counters,
+        })
     }
 
     /// 记录用户选择
@@ -117,20 +133,41 @@ impl L0Learner {
 
     /// 应用学习结果
     pub fn apply_learnings(&self) -> ImeResult<Vec<Candidate>> {
-        // TODO: 实现学习结果应用
-        todo!("实现学习结果应用")
+        Ok(self
+            .get_suggestions()
+            .into_iter()
+            .map(|s| Candidate {
+                text: s.word,
+                code: s.code,
+                score: s.confidence,
+                source: CandidateSource::Dynamic,
+                ngram_score: None,
+                user_weight: Some(s.confidence),
+            })
+            .collect())
     }
 
     /// 保存快照
     pub fn save_snapshot(&self) -> ImeResult<()> {
-        // TODO: 实现快照保存逻辑
-        todo!("实现 L0 快照保存")
+        let snapshot = L0Snapshot {
+            data: self.data.clone(),
+            counters: self.counters.clone(),
+        };
+        let json = serde_json::to_string_pretty(&snapshot)
+            .map_err(|e| wbw_types::ImeError::ConfigError(format!("快照序列化失败: {}", e)))?;
+        std::fs::write(&self.config.snapshot_path, json)
+            .map_err(|e| wbw_types::ImeError::IoError(format!("快照保存失败: {} ({})", self.config.snapshot_path, e)))
     }
 
     /// 加载快照
     pub fn load_snapshot(&mut self) -> ImeResult<()> {
-        // TODO: 实现快照加载逻辑
-        todo!("实现 L0 快照加载")
+        let contents = std::fs::read_to_string(&self.config.snapshot_path)
+            .map_err(|e| wbw_types::ImeError::IoError(format!("快照读取失败: {} ({})", self.config.snapshot_path, e)))?;
+        let snapshot: L0Snapshot = serde_json::from_str(&contents)
+            .map_err(|e| wbw_types::ImeError::ConfigError(format!("快照解析失败: {}", e)))?;
+        self.data = snapshot.data;
+        self.counters = snapshot.counters;
+        Ok(())
     }
 
     /// 清空学习数据
@@ -298,5 +335,65 @@ impl Default for L0LearnConfig {
             max_entries: 10000,
             auto_learn: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config(name: &str) -> L0Config {
+        L0Config {
+            threshold: 2,
+            snapshot_path: std::env::temp_dir()
+                .join(format!("wbw_l0_snapshot_{}_{}.json", std::process::id(), name))
+                .to_string_lossy()
+                .to_string(),
+        }
+    }
+
+    #[test]
+    fn test_save_and_load_snapshot() {
+        let config = test_config("save_load");
+        let mut learner = L0Learner::new(config.clone());
+        learner.record_selection("zhongguo", "中国");
+        learner.record_selection("zhongguo", "中国");
+        learner.save_snapshot().unwrap();
+
+        let loaded = L0Learner::from_snapshot(config, Path::new(&learner.config().snapshot_path)).unwrap();
+        assert_eq!(loaded.data_count(), 2);
+        assert!(loaded.should_learn("zhongguo", "中国"));
+
+        std::fs::remove_file(&learner.config().snapshot_path).ok();
+    }
+
+    #[test]
+    fn test_load_snapshot_into_existing() {
+        let config = test_config("load_existing");
+        let mut learner = L0Learner::new(config.clone());
+        learner.record_selection("a", "啊");
+        learner.record_selection("a", "啊");
+        learner.save_snapshot().unwrap();
+
+        let mut other = L0Learner::new(config.clone());
+        other.load_snapshot().unwrap();
+        assert!(other.should_learn("a", "啊"));
+
+        std::fs::remove_file(&config.snapshot_path).ok();
+    }
+
+    #[test]
+    fn test_apply_learnings() {
+        let config = test_config("apply");
+        let mut learner = L0Learner::new(config);
+        learner.record_selection("zhongguo", "中国");
+        learner.record_selection("zhongguo", "中国");
+
+        let candidates = learner.apply_learnings().unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].text, "中国");
+        assert_eq!(candidates[0].code, "zhongguo");
+        assert_eq!(candidates[0].source, CandidateSource::Dynamic);
+        assert!(candidates[0].user_weight.is_some());
     }
 }

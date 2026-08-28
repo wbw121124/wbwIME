@@ -1,7 +1,7 @@
 //! 权重计算模块
 
 use thiserror::Error;
-use wbw_types::{Candidate, CandidateSource, ImeError, ImeResult, RankConfig};
+use wbw_types::{Candidate, CandidateSource, ImeResult, RankConfig};
 
 /// 权重错误类型
 #[derive(Error, Debug)]
@@ -154,14 +154,87 @@ impl WeightNormalizer {
 pub struct WeightTuner;
 
 impl WeightTuner {
+    /// 评估某一组权重在给定期望顺序下的准确率
+    ///
+    /// 用 WeightCalculator 计算每个候选词的权重，按权重降序排序后，
+    /// 取与前若干名（与期望顺序长度一致）对比，统计排名匹配的比率。
+    fn evaluate(candidates: &[Candidate], expected_order: &[usize], config: &RankConfig) -> f64 {
+        if candidates.is_empty() || expected_order.is_empty() {
+            return 0.0;
+        }
+
+        let calculator = WeightCalculator::new(config.clone());
+        let mut indexed: Vec<(usize, f64)> = candidates
+            .iter()
+            .enumerate()
+            .map(|(idx, c)| (idx, calculator.calculate_weight(c)))
+            .collect();
+        indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // 期望顺序中的前 N 个（N 为期望顺序长度）
+        let expected: Vec<usize> = expected_order.iter().cloned().collect();
+        let limit = expected.len().min(indexed.len());
+        let actual: Vec<usize> = indexed.iter().take(limit).map(|(idx, _)| *idx).collect();
+
+        if limit == 0 {
+            return 0.0;
+        }
+
+        let matched = actual
+            .iter()
+            .zip(expected.iter())
+            .filter(|(a, e)| a == e)
+            .count();
+        matched as f64 / limit as f64
+    }
+
     /// 网格搜索最优权重
     pub fn grid_search(
         candidates: &[Candidate],
         expected_order: &[usize],
         param_ranges: &WeightRanges,
     ) -> ImeResult<(RankConfig, f64)> {
-        // TODO: 实现网格搜索
-        todo!("实现权重网格搜索")
+        const STEPS: usize = 5;
+
+        let step = |(min, max): (f64, f64)| {
+            (0..STEPS)
+                .map(|i| {
+                    let t = i as f64 / (STEPS - 1) as f64;
+                    min + (max - min) * t
+                })
+                .collect::<Vec<f64>>()
+        };
+
+        let pins = step(param_ranges.pin_weight);
+        let users = step(param_ranges.user_weight);
+        let freqs = step(param_ranges.freq_weight);
+        let ngrams = step(param_ranges.ngram_weight);
+
+        let mut best_config = RankConfig::default();
+        let mut best_accuracy = -1.0_f64;
+
+        for &pin in &pins {
+            for &user in &users {
+                for &freq in &freqs {
+                    for &ngram in &ngrams {
+                        let config = RankConfig {
+                            pin_weight: pin,
+                            user_weight: user,
+                            freq_weight: freq,
+                            ngram_weight: ngram,
+                            max_candidates: candidates.len().max(1),
+                        };
+                        let accuracy = Self::evaluate(candidates, expected_order, &config);
+                        if accuracy > best_accuracy {
+                            best_accuracy = accuracy;
+                            best_config = config;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok((best_config, best_accuracy.max(0.0)))
     }
 
     /// 随机搜索
@@ -170,8 +243,39 @@ impl WeightTuner {
         expected_order: &[usize],
         iterations: usize,
     ) -> ImeResult<(RankConfig, f64)> {
-        // TODO: 实现随机搜索
-        todo!("实现权重随机搜索")
+        let ranges = WeightRanges::default();
+        let mut seed: u64 = 0x9E3779B97F4A7C15;
+
+        // 生成 [0, 1) 的确定性伪随机数
+        let next_random = move || -> f64 {
+            seed = seed.wrapping_mul(1103515245).wrapping_add(12345) & 0x7fffffff;
+            (seed & 0x7fffffff) as f64 / (0x7fffffff as f64)
+        };
+
+        let sample = |(min, max): (f64, f64), rng: &mut dyn FnMut() -> f64| {
+            min + (max - min) * rng()
+        };
+
+        let mut best_config = RankConfig::default();
+        let mut best_accuracy = -1.0_f64;
+        let mut rng = next_random;
+
+        for _ in 0..iterations.max(1) {
+            let config = RankConfig {
+                pin_weight: sample(ranges.pin_weight, &mut rng),
+                user_weight: sample(ranges.user_weight, &mut rng),
+                freq_weight: sample(ranges.freq_weight, &mut rng),
+                ngram_weight: sample(ranges.ngram_weight, &mut rng),
+                max_candidates: candidates.len().max(1),
+            };
+            let accuracy = Self::evaluate(candidates, expected_order, &config);
+            if accuracy > best_accuracy {
+                best_accuracy = accuracy;
+                best_config = config;
+            }
+        }
+
+        Ok((best_config, best_accuracy.max(0.0)))
     }
 
     /// 模拟退火
@@ -182,8 +286,73 @@ impl WeightTuner {
         cooling_rate: f64,
         iterations: usize,
     ) -> ImeResult<(RankConfig, f64)> {
-        // TODO: 实现模拟退火
-        todo!("实现模拟退火优化")
+        let ranges = WeightRanges::default();
+        let mut seed: u64 = 0x243F6A8885A308D3;
+        let next_random = move || -> f64 {
+            seed = seed.wrapping_mul(1103515245).wrapping_add(12345) & 0x7fffffff;
+            (seed & 0x7fffffff) as f64 / (0x7fffffff as f64)
+        };
+        let mut rng = next_random;
+
+        let clamp = |v: f64, (min, max): (f64, f64)| v.clamp(min, max);
+        let random_from = |(min, max): (f64, f64), rng: &mut dyn FnMut() -> f64| {
+            min + (max - min) * rng()
+        };
+
+        let mut current = RankConfig {
+            pin_weight: random_from(ranges.pin_weight, &mut rng),
+            user_weight: random_from(ranges.user_weight, &mut rng),
+            freq_weight: random_from(ranges.freq_weight, &mut rng),
+            ngram_weight: random_from(ranges.ngram_weight, &mut rng),
+            max_candidates: candidates.len().max(1),
+        };
+        let mut current_accuracy = Self::evaluate(candidates, expected_order, &current);
+
+        let mut best = current.clone();
+        let mut best_accuracy = current_accuracy;
+        let mut temperature = initial_temp.max(0.0);
+
+        for _ in 0..iterations.max(1) {
+            // 温度衰减
+            temperature *= cooling_rate;
+            if temperature <= 1e-10 {
+                break;
+            }
+
+            // 随机扰动当前权重
+            let perturb = |v: f64, (min, max): (f64, f64), rng: &mut dyn FnMut() -> f64| {
+                let amount = (rng() - 0.5) * temperature;
+                clamp(v + amount, (min, max))
+            };
+
+            let mut neighbor = current.clone();
+            neighbor.pin_weight = perturb(current.pin_weight, ranges.pin_weight, &mut rng);
+            neighbor.user_weight = perturb(current.user_weight, ranges.user_weight, &mut rng);
+            neighbor.freq_weight = perturb(current.freq_weight, ranges.freq_weight, &mut rng);
+            neighbor.ngram_weight = perturb(current.ngram_weight, ranges.ngram_weight, &mut rng);
+
+            let neighbor_accuracy = Self::evaluate(candidates, expected_order, &neighbor);
+
+            let accept = if neighbor_accuracy >= current_accuracy {
+                true
+            } else {
+                let delta = neighbor_accuracy - current_accuracy;
+                let p = (delta / temperature).exp();
+                rng() < p
+            };
+
+            if accept {
+                current = neighbor;
+                current_accuracy = neighbor_accuracy;
+            }
+
+            if current_accuracy > best_accuracy {
+                best = current.clone();
+                best_accuracy = current_accuracy;
+            }
+        }
+
+        Ok((best, best_accuracy.max(0.0)))
     }
 }
 
@@ -222,4 +391,66 @@ pub struct WeightEvaluationResult {
     pub mrr: f64,
     /// 计算时间（毫秒）
     pub elapsed_ms: f64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wbw_types::CandidateSource;
+
+    fn test_candidates() -> Vec<Candidate> {
+        vec![
+            Candidate {
+                text: "中国".into(),
+                code: "zhongguo".into(),
+                score: 100.0,
+                source: CandidateSource::System,
+                ngram_score: Some(0.8),
+                user_weight: Some(0.9),
+            },
+            Candidate {
+                text: "终于".into(),
+                code: "zhongyu".into(),
+                score: 50.0,
+                source: CandidateSource::System,
+                ngram_score: Some(0.6),
+                user_weight: Some(0.4),
+            },
+            Candidate {
+                text: "中".into(),
+                code: "zhong".into(),
+                score: 20.0,
+                source: CandidateSource::System,
+                ngram_score: None,
+                user_weight: None,
+            },
+        ]
+    }
+
+    #[test]
+    fn test_grid_search() {
+        let candidates = test_candidates();
+        let expected = vec![0, 1, 2];
+        let (config, accuracy) =
+            WeightTuner::grid_search(&candidates, &expected, &WeightRanges::default()).unwrap();
+        assert!(accuracy >= 0.0 && accuracy <= 1.0);
+        assert!(config.max_candidates >= 1);
+    }
+
+    #[test]
+    fn test_random_search() {
+        let candidates = test_candidates();
+        let expected = vec![0, 1, 2];
+        let (_, accuracy) = WeightTuner::random_search(&candidates, &expected, 100).unwrap();
+        assert!(accuracy >= 0.0 && accuracy <= 1.0);
+    }
+
+    #[test]
+    fn test_simulated_annealing() {
+        let candidates = test_candidates();
+        let expected = vec![0, 1, 2];
+        let (_, accuracy) =
+            WeightTuner::simulated_annealing(&candidates, &expected, 100.0, 0.99, 200).unwrap();
+        assert!(accuracy >= 0.0 && accuracy <= 1.0);
+    }
 }

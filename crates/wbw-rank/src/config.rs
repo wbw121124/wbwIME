@@ -1,9 +1,8 @@
 //! 排序配置模块
 
 use std::path::Path;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use wbw_types::{ImeError, ImeResult, RankConfig};
+use wbw_types::{ImeResult, RankConfig};
 
 /// 配置错误类型
 #[derive(Error, Debug)]
@@ -40,8 +39,14 @@ impl RankConfigManager {
 
     /// 从文件加载配置
     pub fn from_file(path: &Path) -> ImeResult<Self> {
-        // TODO: 实现文件加载逻辑
-        todo!("实现配置文件加载")
+        let contents = std::fs::read_to_string(path)
+            .map_err(|e| wbw_types::ImeError::IoError(format!("配置文件读取失败: {} ({})", path.display(), e)))?;
+        let config: RankConfig = serde_json::from_str(&contents)
+            .map_err(|e| wbw_types::ImeError::ConfigError(format!("配置解析失败: {}", e)))?;
+        Ok(Self {
+            config,
+            config_path: Some(path.to_string_lossy().to_string()),
+        })
     }
 
     /// 从内存加载配置
@@ -69,20 +74,24 @@ impl RankConfigManager {
 
     /// 保存配置到文件
     pub fn save(&self) -> ImeResult<()> {
-        // TODO: 实现保存逻辑
-        todo!("实现配置保存")
+        if let Some(path) = &self.config_path {
+            self.save_to(Path::new(path))
+        } else {
+            Err(wbw_types::ImeError::ConfigError("未设置配置文件路径".to_string()))
+        }
     }
 
     /// 保存配置到指定路径
     pub fn save_to(&self, path: &Path) -> ImeResult<()> {
-        // TODO: 实现保存到指定路径逻辑
-        todo!("实现配置保存到指定路径")
+        let json = serde_json::to_string_pretty(&self.config)
+            .map_err(|e| wbw_types::ImeError::ConfigError(format!("配置序列化失败: {}", e)))?;
+        std::fs::write(path, json)
+            .map_err(|e| wbw_types::ImeError::IoError(format!("配置保存失败: {} ({})", path.display(), e)))
     }
 
     /// 验证配置
     pub fn validate(&self) -> ImeResult<()> {
-        // TODO: 实现验证逻辑
-        todo!("实现配置验证")
+        ConfigValidator::validate(&self.config)
     }
 
     /// 重置为默认配置
@@ -166,8 +175,12 @@ pub struct ConfigValidator;
 impl ConfigValidator {
     /// 验证配置有效性
     pub fn validate(config: &RankConfig) -> ImeResult<()> {
-        // TODO: 实现验证逻辑
-        todo!("实现配置验证")
+        let errors = Self::validation_errors(config);
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(wbw_types::ImeError::ConfigError(errors.join("；")))
+        }
     }
 
     /// 验证权重范围
@@ -246,5 +259,55 @@ impl ConfigDiff {
             || self.weight_diff.freq_weight != 0.0
             || self.weight_diff.ngram_weight != 0.0
             || self.max_candidates_diff.is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn sample_config() -> RankConfig {
+        RankConfig {
+            pin_weight: 90.0,
+            user_weight: 12.0,
+            freq_weight: 1.2,
+            ngram_weight: 0.8,
+            max_candidates: 10,
+        }
+    }
+
+    #[test]
+    fn test_from_file_and_save_to() {
+        let dir = std::env::temp_dir().join(format!("wbw_rank_config_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path: PathBuf = dir.join("rank.json");
+
+        let manager = RankConfigManager::from_memory(sample_config());
+        manager.save_to(&path).unwrap();
+
+        let loaded = RankConfigManager::from_file(&path).unwrap();
+        assert_eq!(loaded.config().pin_weight, 90.0);
+        assert_eq!(loaded.config().max_candidates, 10);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_save_without_path() {
+        let manager = RankConfigManager::from_memory(sample_config());
+        assert!(manager.save().is_err());
+    }
+
+    #[test]
+    fn test_validate() {
+        let valid = ConfigValidator::validate(&sample_config());
+        assert!(valid.is_ok());
+
+        let invalid = RankConfig {
+            max_candidates: 0,
+            ..sample_config()
+        };
+        assert!(ConfigValidator::validate(&invalid).is_err());
     }
 }

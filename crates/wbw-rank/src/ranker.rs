@@ -4,7 +4,7 @@
 
 use std::num::NonZeroUsize;
 use std::time::Instant;
-use wbw_types::{Candidate, CandidateSource, L0Config, RankConfig};
+use wbw_types::{Candidate, L0Config, RankConfig};
 use crate::config::RankConfigManager;
 use crate::weight::{WeightCalculator, WeightNormalizer};
 use crate::l0_learn::L0Learner;
@@ -212,6 +212,7 @@ impl Default for RankerBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wbw_types::CandidateSource;
 
     fn test_candidates() -> Vec<Candidate> {
         vec![
