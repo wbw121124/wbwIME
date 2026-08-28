@@ -345,10 +345,10 @@ fn run_ime(stream: &mut UnixStream, ime: &mut FbtermIme) -> std::io::Result<()> 
             MsgType::FbTermInfo => {
                 if payload.len() >= 12 {
                     let info: FbTermInfoData = unsafe { std::mem::transmute_copy(&payload[0]) };
-                    eprintln!(
-                        "[fbterm] {}x{} rotation={}",
-                        info.term_width, info.term_height, info.rotation
-                    );
+                    let w = info.term_width;
+                    let h = info.term_height;
+                    let r = info.rotation;
+                    eprintln!("[fbterm] {}x{} rotation={}", w, h, r);
                 }
             }
             MsgType::HideUI => {
