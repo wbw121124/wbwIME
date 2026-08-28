@@ -42,7 +42,7 @@ $cliExe = Join-Path $scriptDir "wbwime.exe"
 # 构建模式：查找 target/release 或 target/debug
 if (-not (Test-Path $tsfDll) -and -not (Test-Path $cliExe)) {
     $targetDir = "$ProjectRoot\target\release"
-    if (-not (Test-Path $targetDir)) {
+    if (-not (Test-Path $targetDir) -or -not ((Test-Path (Join-Path $targetDir "wbw_ime_tsf.dll")) -or (Test-Path (Join-Path $targetDir "wbwime.exe")))) {
         $targetDir = "$ProjectRoot\target\debug"
     }
     Write-Host "  构建目录: $targetDir"
