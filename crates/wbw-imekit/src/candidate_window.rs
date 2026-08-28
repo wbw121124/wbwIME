@@ -151,6 +151,7 @@ impl CandidateWindow {
     /// 更新候选词
     pub fn update_candidates(&mut self, candidates: Vec<Candidate>) {
         self.candidates = candidates;
+        self.page = 0;
         self.selected_index = 0;
     }
 

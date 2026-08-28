@@ -118,60 +118,43 @@ impl FuzzyMatcher {
     ///
     /// 对输入中的每个音素，根据规则生成所有可能的替换，
     /// 然后组合所有可能的变体。
+    ///
+    /// 基于字符序列处理，避免多字节切片越界，且替换长度变化
+    /// （如 z→zh）不会造成后续偏移错位。
     pub fn generate_variants(&self, input: &str) -> Vec<String> {
         if !self.config.enabled {
             return vec![input.to_string()];
         }
 
-        // 尝试在 input 中查找所有可替换的位置
         let mut variants: Vec<String> = vec![input.to_string()];
 
-        // 收集所有可能的替换
-        let mut replacements: Vec<(usize, usize, Vec<String>)> = Vec::new(); // (start, end, [replacements])
-
         for (from, rules) in &self.rule_map {
-            let from_len = from.len();
-            if from_len == 0 {
+            let from_chars: Vec<char> = from.chars().collect();
+            if from_chars.is_empty() {
                 continue;
             }
-            // 在 input 中查找 from 的所有出现位置
-            let mut search_pos = 0;
-            while search_pos <= input.len() {
-                if let Some(start) = input[search_pos..].find(from.as_str()) {
-                    let abs_start = search_pos + start;
-                    let abs_end = abs_start + from_len;
-                    let targets: Vec<String> = rules.iter().map(|r| r.to.clone()).collect();
-                    replacements.push((abs_start, abs_end, targets));
-                    search_pos = abs_start + 1;
-                } else {
-                    break;
-                }
-            }
-        }
+            let targets: Vec<&str> = rules.iter().map(|r| r.to.as_str()).collect();
+            let mut new_variants: Vec<String> = Vec::new();
 
-        // 按位置排序
-        replacements.sort_by_key(|&(start, _, _)| start);
-
-        // 去除重叠的替换
-        let mut filtered = Vec::new();
-        let mut last_end = 0;
-        for (start, end, targets) in replacements {
-            if start >= last_end {
-                filtered.push((start, end, targets));
-                last_end = end;
-            }
-        }
-
-        // 逐个应用替换，生成所有组合
-        for (start, end, targets) in filtered {
-            let mut new_variants = Vec::new();
             for variant in &variants {
-                for target in &targets {
-                    let mut new_var = variant.clone();
-                    new_var.replace_range(start..end, target);
-                    new_variants.push(new_var);
+                let chars: Vec<char> = variant.chars().collect();
+                // 在每个不重叠的字符位置尝试替换
+                let mut i = 0;
+                while i + from_chars.len() <= chars.len() {
+                    if chars[i..i + from_chars.len()] == from_chars[..] {
+                        for target in &targets {
+                            let mut out: String = chars[..i].iter().collect();
+                            out.push_str(target);
+                            out.extend(chars[i + from_chars.len()..].iter());
+                            new_variants.push(out);
+                        }
+                        i += from_chars.len();
+                    } else {
+                        i += 1;
+                    }
                 }
             }
+
             variants.extend(new_variants);
         }
 
@@ -357,6 +340,22 @@ mod tests {
         let matcher = FuzzyMatcher::new(config);
         let variants = matcher.generate_variants("zongguo");
         assert_eq!(variants, vec!["zongguo".to_string()]);
+    }
+
+    #[test]
+    fn test_generate_variants_no_misalignment() {
+        // 长度变化的替换（an→ang）在多个位置共存时不应错位
+        let config = FuzzyConfig {
+            rules: vec![FuzzyRule::new("an-ang".into(), "an".into(), "ang".into())],
+            ..Default::default()
+        };
+        let matcher = FuzzyMatcher::new(config);
+        let variants = matcher.generate_variants("banan");
+        // "banan"：两处 an → ang，单步替换应正确生成二者，且不相互错位
+        assert!(variants.contains(&"banang".to_string()));
+        assert!(variants.contains(&"bangan".to_string()));
+        // 原始输入仍在
+        assert!(variants.contains(&"banan".to_string()));
     }
 
     #[test]

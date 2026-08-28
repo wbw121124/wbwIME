@@ -49,7 +49,7 @@ impl Matcher {
     /// 创建空匹配器（未加载词典）
     pub fn new(config: MatcherConfig) -> Self {
         let cache = if config.cache_enabled {
-            Some(lru::LruCache::new(NonZeroUsize::new(config.cache_size).unwrap()))
+            Self::new_cache(config.cache_size)
         } else {
             None
         };
@@ -63,7 +63,7 @@ impl Matcher {
     /// 创建带词典的匹配器
     pub fn with_dict(config: MatcherConfig, dict: FstDict) -> Self {
         let cache = if config.cache_enabled {
-            Some(lru::LruCache::new(NonZeroUsize::new(config.cache_size).unwrap()))
+            Self::new_cache(config.cache_size)
         } else {
             None
         };
@@ -72,6 +72,11 @@ impl Matcher {
             dict: Some(dict),
             cache,
         }
+    }
+
+    /// 构造 LRU 缓存，容量下限为 1
+    fn new_cache(size: usize) -> Option<lru::LruCache<String, Vec<Candidate>>> {
+        Some(lru::LruCache::new(NonZeroUsize::new(size.max(1))?))
     }
 
     /// 从 .cin 文件加载词典
@@ -90,12 +95,14 @@ impl Matcher {
                 }
             }
             self.dict = Some(builder.build(DictSource::Base));
+            self.clear_cache();
         }
     }
 
     /// 加载词典
     pub fn load_dict(&mut self, dict: FstDict) {
         self.dict = Some(dict);
+        self.clear_cache();
     }
 
     /// 匹配输入上下文
@@ -149,8 +156,9 @@ impl Matcher {
 
         // 按分数降序排序
         candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        // 去重（保留第一个，即最高分的）
-        candidates.dedup_by(|a, b| a.text == b.text);
+        // 全局去重（保留首个即最高分），不受相邻性限制
+        let mut seen = std::collections::HashSet::new();
+        candidates.retain(|c| seen.insert(c.text.clone()));
         candidates
     }
 
@@ -419,6 +427,29 @@ mod tests {
         let results = matcher.fuzzy_lookup("zhongguo");
         // "wo" 到 "zhongguo" 编辑距离很大，应无结果
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_do_match_dedup_by_text() {
+        // 不同编码命中同一词（zdl / zdliu → 最大流）时，
+        // do_match 应按词去重，只保留最高分的一个候选。
+        let mut builder = FstDictBuilder::new();
+        builder.add_entries(vec![
+            DictEntry { code: "zdl".into(), word: "最大流".into(), freq: 100, source: DictSource::Base },
+            DictEntry { code: "zdliu".into(), word: "最大流".into(), freq: 50, source: DictSource::Base },
+        ]);
+        let dict = builder.build(DictSource::Base);
+        let mut matcher = Matcher::with_dict(MatcherConfig::default(), dict);
+        let context = InputContext {
+            buffer: "zdl".to_string(),
+            cursor: 0,
+            mode: wbw_types::InputMode::Pinyin,
+            selected: Vec::new(),
+            session_id: 0,
+        };
+        let results = matcher.match_input(&context);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].text, "最大流");
     }
 
     #[test]

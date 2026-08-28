@@ -326,7 +326,9 @@ fn run_interactive() -> CliResult<()> {
         print!("选择序号 (回车跳过, b 退格, q 退出): ");
         std::io::stdout().flush().unwrap();
         let mut choice = String::new();
-        std::io::stdin().read_line(&mut choice).unwrap();
+        if std::io::stdin().read_line(&mut choice).is_err() {
+            break;
+        }
         let choice = choice.trim();
 
         match choice {

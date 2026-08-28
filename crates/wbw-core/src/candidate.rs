@@ -39,8 +39,12 @@ impl CandidateList {
 
     /// 获取当前页候选词
     pub fn current_page(&self) -> &[Candidate] {
-        let start = self.page * self.page_size;
-        let end = std::cmp::min(start + self.page_size, self.candidates.len());
+        let len = self.candidates.len();
+        if self.page_size == 0 || len == 0 {
+            return &[];
+        }
+        let start = (self.page * self.page_size).min(len);
+        let end = (start + self.page_size).min(len);
         &self.candidates[start..end]
     }
 
@@ -212,9 +216,10 @@ impl CandidateFilter {
         candidates.iter().take(max_count).collect()
     }
 
-    /// 去重
+    /// 去重（按 text+code 全局去重，保留首次出现；不受相邻性限制）
     pub fn deduplicate(candidates: &mut Vec<Candidate>) {
-        candidates.dedup_by(|a, b| a.text == b.text && a.code == b.code);
+        let mut seen = std::collections::HashSet::new();
+        candidates.retain(|c| seen.insert((c.text.clone(), c.code.clone())));
     }
 
     /// 排序（按分数降序）
@@ -302,5 +307,42 @@ mod tests {
         assert_eq!(candidates.len(), 3);
         CandidateFilter::deduplicate(&mut candidates);
         assert_eq!(candidates.len(), 2);
+    }
+
+    #[test]
+    fn test_candidate_deduplicate_non_adjacent() {
+        // 相同词条（text+code 完全一致）被非相同项隔开时也应去重，
+        // 依赖"相邻去重"的实现会漏掉这种情况。
+        let mut candidates = vec![
+            Candidate {
+                text: "最大流".into(),
+                code: "zdl".into(),
+                score: 100.0,
+                source: CandidateSource::System,
+                ngram_score: None,
+                user_weight: None,
+            },
+            Candidate {
+                text: "最短路".into(),
+                code: "zdl".into(),
+                score: 90.0,
+                source: CandidateSource::System,
+                ngram_score: None,
+                user_weight: None,
+            },
+            Candidate {
+                text: "最大流".into(),
+                code: "zdl".into(),
+                score: 60.0,
+                source: CandidateSource::System,
+                ngram_score: None,
+                user_weight: None,
+            },
+        ];
+        assert_eq!(candidates.len(), 3);
+        CandidateFilter::deduplicate(&mut candidates);
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].text, "最大流");
+        assert_eq!(candidates[1].text, "最短路");
     }
 }

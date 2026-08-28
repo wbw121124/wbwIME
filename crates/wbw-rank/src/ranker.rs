@@ -197,7 +197,9 @@ impl RankerBuilder {
     pub fn build(self) -> Ranker {
         let mut ranker = Ranker::new(self.config);
         if let Some(cache_size) = self.cache_size {
-            ranker.cache = Some(lru::LruCache::new(NonZeroUsize::new(cache_size).unwrap()));
+            ranker.cache = Some(lru::LruCache::new(
+                NonZeroUsize::new(cache_size.max(1)).expect("cache_size 已 clamp 到 >= 1"),
+            ));
         }
         ranker
     }
