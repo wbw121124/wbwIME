@@ -186,6 +186,23 @@ fn default_dict_path() -> PathBuf {
     PathBuf::from("resources/dicts/cs-oi.cin")
 }
 
+/// 从 .cin 或 .fst 文件加载词典和模糊规则
+fn load_dict_from_file(path: &Path) -> CliResult<(FstDict, Vec<CinFuzzyRule>)> {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("fst") => {
+            // 直接从 .fst 二进制文件加载
+            let dict = FstDict::from_file(path)
+                .map_err(|e| CliError::DictError(e.to_string()))?;
+            println!("从 .fst 文件加载: {} 条目, {} 编码", dict.entry_count(), dict.code_count());
+            Ok((dict, Vec::new()))
+        }
+        _ => {
+            // 从 .cin 文件解析并构建
+            build_fst(path)
+        }
+    }
+}
+
 /// 从 .cin 文件解析并构建 FST 词典
 fn build_fst(path: &Path) -> CliResult<(FstDict, Vec<CinFuzzyRule>)> {
     if !path.exists() {
@@ -272,7 +289,7 @@ fn run_interactive() -> CliResult<()> {
     println!("示例解码: {} (词条 {})", dict_path.display(), dict_path.exists());
     println!();
 
-    let (dict, fuzzy_rules) = match build_fst(&dict_path) {
+    let (dict, fuzzy_rules) = match load_dict_from_file(&dict_path) {
         Ok(d) => d,
         Err(e) => {
             println!("警告: {}", e);
@@ -378,7 +395,7 @@ fn run_query(code: &str) -> CliResult<()> {
     let config = load_config();
     let dict_path = default_dict_path();
 
-    let (dict, fuzzy_rules) = match build_fst(&dict_path) {
+    let (dict, fuzzy_rules) = match load_dict_from_file(&dict_path) {
         Ok(d) => d,
         Err(e) => {
             println!("错误: {}", e);
@@ -422,7 +439,7 @@ fn run_query(code: &str) -> CliResult<()> {
 /// 执行测试匹配
 fn run_test_match(code: &str, dict_path: &Path) -> CliResult<()> {
     let config = load_config();
-    let (dict, fuzzy_rules) = build_fst(dict_path)?;
+    let (dict, fuzzy_rules) = load_dict_from_file(dict_path)?;
     println!("词典加载成功: {} 条目", dict.entry_count());
 
     let matcher = build_matcher(dict, Some(fuzzy_rules));
@@ -466,12 +483,22 @@ fn run_test_match(code: &str, dict_path: &Path) -> CliResult<()> {
     Ok(())
 }
 
-/// 构建 FST 词典（内存构建并验证，当前版本 FST 为内存哈希实现，尚不支持二进制持久化）
-fn run_build_dict(dict_path: &Path, _out_path: &Path) -> CliResult<()> {
+/// 构建 FST 词典并写入 .fst 二进制文件
+fn run_build_dict(dict_path: &Path, out_path: &Path) -> CliResult<()> {
     let (dict, fuzzy_rules) = build_fst(dict_path)?;
+
+    // 写入 .fst 二进制文件
+    dict.write_to_file(out_path)
+        .map_err(|e| CliError::DictError(e.to_string()))?;
+
+    let file_size = std::fs::metadata(out_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     println!("词典构建完成:");
     println!("  输入: {}", dict_path.display());
+    println!("  输出: {}", out_path.display());
+    println!("  文件大小: {} bytes", file_size);
     println!("  词条: {}", dict.entry_count());
     println!("  编码: {}", dict.code_count());
     println!("  模糊规则: {} 条", fuzzy_rules.len());
