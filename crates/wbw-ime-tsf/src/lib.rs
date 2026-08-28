@@ -42,6 +42,8 @@ struct Guid {
 const IID_IUNKNOWN: Guid = Guid { data1: 0x00000000, data2: 0x0000, data3: 0x0000, data4: [0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x46] };
 const IID_ICLASSFACTORY: Guid = Guid { data1: 0x00000001, data2: 0x0000, data3: 0x0000, data4: [0xC0,0x00,0x00,0x00,0x00,0x00,0x00,0x46] };
 const CLSID_WBW_IME: Guid = Guid { data1: 0xE8A3B0F2, data2: 0x1234, data3: 0x5678, data4: [0x9A,0xBC,0xDE,0xF0,0x12,0x34,0x56,0x78] };
+const IID_ITF_THREAD_MGR: Guid = Guid { data1: 0xAA80E901, data2: 0x2021, data3: 0x11D2, data4: [0x93,0xE0,0x00,0x60,0xB0,0x67,0xB8,0x6E] };
+const IID_ITF_KEY_STROKE_MGR: Guid = Guid { data1: 0xAA80E902, data2: 0x2021, data3: 0x11D2, data4: [0x93,0xE0,0x00,0x60,0xB0,0x67,0xB8,0x6E] };
 const IID_ITF_TEXT_INPUT_PROCESSOR_EX: Guid = Guid { data1: 0x86462810, data2: 0x5174, data3: 0x11D4, data4: [0xB6,0x3F,0x83,0x63,0xED,0x0B,0x40,0x71] };
 const IID_ITF_KEY_EVENT_SINK: Guid = Guid { data1: 0xAA80E900, data2: 0x2021, data3: 0x11D2, data4: [0x93,0xE0,0x00,0x60,0xB0,0x67,0xB8,0x6E] };
 
@@ -182,6 +184,51 @@ fn clipboard_paste(text: &str) {
     }
 }
 
+// ========== ITfKeystrokeMgr vtable (手动) ==========
+
+/// ITfKeystrokeMgr vtable — 只声明我们要用的方法。
+///
+/// IUnknown (3) + AdviseKeyEventSink(4) + UnadviseKeyEventSink(5)
+#[repr(C)]
+struct TfKeystrokeMgrVtable {
+    _qi: usize,
+    _add_ref: usize,
+    _release: usize,
+    // ITfKeystrokeMgr
+    _advise_key_sink: usize,
+    _unadvise_key_sink: usize,
+    // 后续方法省略
+}
+
+/// 调用 ITfKeystrokeMgr::AdviseKeyEventSink
+///
+/// # Safety
+/// `mgr_ptr` 必须指向有效的 ITfKeystrokeMgr COM 对象。
+unsafe fn advise_key_sink(
+    mgr_ptr: *mut c_void,
+    tid: u32,
+    sink: *mut c_void,
+    focus: i32,
+) -> HRESULT {
+    // vtable 布局: [QI, AddRef, Release, AdviseKeyEventSink, ...]
+    // AdviseKeyEventSink 是第 4 个方法 (index 3)
+    let vtable = unsafe { *(mgr_ptr as *const *const usize) };
+    let advise_fn: unsafe extern "system" fn(*mut c_void, u32, *mut c_void, i32) -> HRESULT =
+        unsafe { std::mem::transmute(*vtable.add(3)) };
+    unsafe { advise_fn(mgr_ptr, tid, sink, focus) }
+}
+
+/// 调用 ITfKeystrokeMgr::UnadviseKeyEventSink
+///
+/// # Safety
+/// `mgr_ptr` 必须指向有效的 ITfKeystrokeMgr COM 对象。
+unsafe fn unadvise_key_sink(mgr_ptr: *mut c_void, tid: u32) -> HRESULT {
+    let vtable = unsafe { *(mgr_ptr as *const *const usize) };
+    let unadvise_fn: unsafe extern "system" fn(*mut c_void, u32) -> HRESULT =
+        unsafe { std::mem::transmute(*vtable.add(4)) };
+    unsafe { unadvise_fn(mgr_ptr, tid) }
+}
+
 // ========== TextService COM 对象 ==========
 
 /// TextService 实现 IUnknown + ITfTextInputProcessorEx + ITfKeyEventSink
@@ -210,6 +257,7 @@ struct TextService {
     ks_on_preserved_key: unsafe extern "system" fn(*mut c_void, *mut c_void, *const Guid, *mut i32) -> HRESULT,
     // 状态
     client_id: u32,
+    thread_mgr: *mut c_void,
 }
 
 unsafe impl Send for TextService {}
@@ -225,6 +273,7 @@ impl TextService {
             ks_on_test_key_up: ks_test_key_up, ks_on_key_down: ks_key_down,
             ks_on_key_up: ks_key_up, ks_on_preserved_key: ks_preserved_key,
             client_id: 0,
+            thread_mgr: std::ptr::null_mut(),
         }))
     }
 }
@@ -262,15 +311,98 @@ unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
 
 // ========== ITfTextInputProcessorEx ==========
 
-unsafe extern "system" fn ts_activate(this: *mut c_void, _punk: *mut c_void) -> HRESULT {
-    // TODO: 从 _punk 获取 ITfThreadMgr 并注册 ITfKeyEventSink
-    // 暂时只返回 S_OK
-    let _ = this;
+unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void) -> HRESULT {
+    let ts = unsafe { &mut *(this as *mut TextService) };
+
+    // punk 是 ITfThreadMgr，但我们只拿到 IUnknown*，需要 QI
+    // QI for ITfThreadMgr
+    let mut thread_mgr: *mut c_void = std::ptr::null_mut();
+    let hr = unsafe {
+        let qi_fn: unsafe extern "system" fn(*mut c_void, *const Guid, *mut *mut c_void) -> HRESULT =
+            std::mem::transmute(**(punk as *const *const usize));
+        qi_fn(punk, &IID_ITF_THREAD_MGR, &mut thread_mgr)
+    };
+    if hr != S_OK || thread_mgr.is_null() {
+        return E_FAIL;
+    }
+
+    // QI for ITfKeystrokeMgr (同一对象，不同接口)
+    let mut keystroke_mgr: *mut c_void = std::ptr::null_mut();
+    let hr = unsafe {
+        let qi_fn: unsafe extern "system" fn(*mut c_void, *const Guid, *mut *mut c_void) -> HRESULT =
+            std::mem::transmute(**(thread_mgr as *const *const usize));
+        qi_fn(thread_mgr, &IID_ITF_KEY_STROKE_MGR, &mut keystroke_mgr)
+    };
+    if hr != S_OK || keystroke_mgr.is_null() {
+        // 释放 thread_mgr
+        unsafe {
+            let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
+                std::mem::transmute(*(*(thread_mgr as *const *const usize)).add(2));
+            release_fn(thread_mgr);
+        }
+        return E_FAIL;
+    }
+
+    // 分配 client_id (用 this 指针的低位作为简单 ID)
+    ts.client_id = (this as usize & 0xFFFF) as u32;
+
+    // 保存 thread_mgr 用于后续使用
+    ts.thread_mgr = thread_mgr;
+
+    // 注册 ITfKeyEventSink
+    let hr = unsafe { advise_key_sink(keystroke_mgr, ts.client_id, this, 1) };
+
+    // 释放 keystroke_mgr (我们不再需要它，但 thread_mgr 保留)
+    unsafe {
+        let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
+            std::mem::transmute(*(*(keystroke_mgr as *const *const usize)).add(2));
+        release_fn(keystroke_mgr);
+    }
+
+    if hr != S_OK {
+        // 释放 thread_mgr
+        unsafe {
+            let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
+                std::mem::transmute(*(*(thread_mgr as *const *const usize)).add(2));
+            release_fn(thread_mgr);
+            ts.thread_mgr = std::ptr::null_mut();
+        }
+        return hr;
+    }
+
     S_OK
 }
 
 unsafe extern "system" fn ts_deactivate(this: *mut c_void) -> HRESULT {
-    let _ = this;
+    let ts = unsafe { &mut *(this as *mut TextService) };
+
+    if !ts.thread_mgr.is_null() {
+        // QI for ITfKeystrokeMgr
+        let mut keystroke_mgr: *mut c_void = std::ptr::null_mut();
+        let hr = unsafe {
+            let qi_fn: unsafe extern "system" fn(*mut c_void, *const Guid, *mut *mut c_void) -> HRESULT =
+                std::mem::transmute(**(ts.thread_mgr as *const *const usize));
+            qi_fn(ts.thread_mgr, &IID_ITF_KEY_STROKE_MGR, &mut keystroke_mgr)
+        };
+
+        if hr == S_OK && !keystroke_mgr.is_null() {
+            unsafe { unadvise_key_sink(keystroke_mgr, ts.client_id); }
+            unsafe {
+                let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
+                    std::mem::transmute(*(*(keystroke_mgr as *const *const usize)).add(2));
+                release_fn(keystroke_mgr);
+            }
+        }
+
+        // 释放 thread_mgr
+        unsafe {
+            let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
+                std::mem::transmute(*(*(ts.thread_mgr as *const *const usize)).add(2));
+            release_fn(ts.thread_mgr);
+        }
+        ts.thread_mgr = std::ptr::null_mut();
+    }
+
     S_OK
 }
 
