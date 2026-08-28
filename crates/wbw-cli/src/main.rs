@@ -390,12 +390,12 @@ fn run_query(code: &str) -> CliResult<()> {
     // 模糊匹配
     let fuzzy = matcher.fuzzy_lookup(code);
 
-    // 合并候选（去重，保留最高分）
+    // 合并候选（按词去重，保留最高分）
     let mut seen = std::collections::HashSet::new();
     let mut all: Vec<Candidate> = Vec::new();
     for mut c in exact.into_iter().chain(prefix).chain(fuzzy) {
-        if seen.insert((c.code.clone(), c.text.clone())) {
-            c.code = code.to_string();
+        c.code = code.to_string();
+        if seen.insert(c.text.clone()) {
             all.push(c);
         }
     }
@@ -443,10 +443,14 @@ fn run_test_match(code: &str, dict_path: &Path) -> CliResult<()> {
     if exact.is_empty() && prefix.is_empty() && fuzzy.is_empty() {
         println!("未找到编码 '{}' 的匹配", code);
     } else {
+        // 合并三类匹配并按词去重（保留最高分）
         let mut all = Vec::new();
         all.extend(exact);
         all.extend(prefix);
         all.extend(fuzzy);
+        all.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        let mut seen = std::collections::HashSet::new();
+        all.retain(|c| seen.insert(c.text.clone()));
         let ranked = ranker.rank(all);
         println!("\n最终排序 (前 {} 个):", config.rank.max_candidates);
         let max = config.rank.max_candidates.max(1);

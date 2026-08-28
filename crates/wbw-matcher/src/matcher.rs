@@ -7,7 +7,7 @@ use std::time::Instant;
 use wbw_dict::entry::{DictEntry, DictSource};
 use wbw_dict::{CinParser, FstDict, FstDictBuilder};
 use wbw_types::{Candidate, CandidateSource, InputContext};
-use crate::fuzzy::{FuzzyConfig, FuzzyMatcher, FuzzyRule};
+use crate::fuzzy::{FuzzyConfig, FuzzyRule};
 
 /// 匹配器配置
 #[derive(Debug, Clone)]
@@ -42,14 +42,12 @@ impl Default for MatcherConfig {
 pub struct Matcher {
     config: MatcherConfig,
     dict: Option<FstDict>,
-    fuzzy_matcher: FuzzyMatcher,
     cache: Option<lru::LruCache<String, Vec<Candidate>>>,
 }
 
 impl Matcher {
     /// 创建空匹配器（未加载词典）
     pub fn new(config: MatcherConfig) -> Self {
-        let fuzzy_matcher = FuzzyMatcher::new(config.fuzzy_config.clone());
         let cache = if config.cache_enabled {
             Some(lru::LruCache::new(NonZeroUsize::new(config.cache_size).unwrap()))
         } else {
@@ -58,14 +56,12 @@ impl Matcher {
         Self {
             config,
             dict: None,
-            fuzzy_matcher,
             cache,
         }
     }
 
     /// 创建带词典的匹配器
     pub fn with_dict(config: MatcherConfig, dict: FstDict) -> Self {
-        let fuzzy_matcher = FuzzyMatcher::new(config.fuzzy_config.clone());
         let cache = if config.cache_enabled {
             Some(lru::LruCache::new(NonZeroUsize::new(config.cache_size).unwrap()))
         } else {
@@ -74,7 +70,6 @@ impl Matcher {
         Self {
             config,
             dict: Some(dict),
-            fuzzy_matcher,
             cache,
         }
     }
@@ -206,34 +201,33 @@ impl Matcher {
             .collect()
     }
 
-    /// 模糊匹配：通过变体生成和编辑距离查找
+    /// 模糊匹配：通过编辑距离（Levenshtein）在词典中查找相近编码
     pub fn fuzzy_lookup(&self, code: &str) -> Vec<Candidate> {
         let dict = match &self.dict {
             Some(d) => d,
             None => return Vec::new(),
         };
 
-        let variants = self.fuzzy_matcher.generate_variants(code);
-        let mut candidates = Vec::new();
-
-        for variant in &variants {
-            if variant == code {
-                continue;
-            }
-            let entries = dict.lookup(variant);
-            for entry in entries {
-                candidates.push(Candidate {
+        let max_edit = self.config.fuzzy_config.max_edit_distance;
+        dict.fuzzy_lookup(code, max_edit)
+            .into_iter()
+            .map(|(entry, dist)| {
+                // 分数随编辑距离增大而降低
+                let score = if dist == 0 {
+                    100.0
+                } else {
+                    50.0 - (dist as f64) * 10.0
+                };
+                Candidate {
                     text: entry.word.clone(),
-                    code: variant.clone(),
-                    score: 50.0 + entry.freq as f64 * 0.1,
+                    code: entry.code.clone(),
+                    score,
                     source: CandidateSource::System,
                     ngram_score: None,
                     user_weight: None,
-                });
-            }
-        }
-
-        candidates
+                }
+            })
+            .collect()
     }
 
     /// 清除缓存
@@ -390,6 +384,41 @@ mod tests {
         let results = matcher.fuzzy_lookup("zongguo");
         // z→zh 规则应生成 "zhongguo" 变体
         assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_fuzzy_lookup_edit_distance() {
+        // 编辑距离类模糊：输入缺字符（zdlu）能匹配到 zdliu
+        let mut builder = FstDictBuilder::new();
+        builder.add_entries(vec![DictEntry {
+            code: "zdliu".into(),
+            word: "最大流".into(),
+            freq: 100,
+            source: DictSource::Base,
+        }]);
+        let dict = builder.build(DictSource::Base);
+        let matcher = Matcher::with_dict(MatcherConfig::default(), dict);
+        let results = matcher.fuzzy_lookup("zdlu");
+        assert!(!results.is_empty(), "缺字符编码应通过编辑距离模糊匹配到");
+        assert_eq!(results[0].text, "最大流");
+        assert_eq!(results[0].code, "zdliu");
+    }
+
+    #[test]
+    fn test_fuzzy_lookup_too_far_ignored() {
+        // 超出最大编辑距离的编码不应被模糊匹配到
+        let mut builder = FstDictBuilder::new();
+        builder.add_entries(vec![DictEntry {
+            code: "wo".into(),
+            word: "我".into(),
+            freq: 100,
+            source: DictSource::Base,
+        }]);
+        let dict = builder.build(DictSource::Base);
+        let matcher = Matcher::with_dict(MatcherConfig::default(), dict);
+        let results = matcher.fuzzy_lookup("zhongguo");
+        // "wo" 到 "zhongguo" 编辑距离很大，应无结果
+        assert!(results.is_empty());
     }
 
     #[test]

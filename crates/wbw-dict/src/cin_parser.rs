@@ -133,20 +133,31 @@ impl CinParser {
                 )));
             }
 
-            let word_text = parts[1];
-
-            // 解析词频（可选第三字段）
-            let freq = if parts.len() >= 3 {
-                parts[2].parse::<u32>().unwrap_or(0)
+            // 解析词与词频。
+            // 词可能包含空格（如英文短语 "Floyd 算法"）。
+            // 规则（编码为第 1 个字段，其余为词）：
+            //   - 末尾字段为 "_"    => 词频未设置占位，剥离该字段，剩余部分为词
+            //   - 末尾字段为纯数字  => 作为词频，剥离该字段，剩余部分为词
+            //   - 否则              => 全部字段拼成词
+            // 需要注意：只有第 3 个及以后的字段才可能是词频，避免把纯数字词误解为词频。
+            let n = parts.len();
+            let last = parts[n - 1];
+            let (word_text, freq) = if n >= 3 && last == "_" {
+                (parts[1..n - 1].join(" "), 0)
+            } else if n >= 3 {
+                match last.parse::<u32>() {
+                    Ok(f) => (parts[1..n - 1].join(" "), f),
+                    Err(_) => (parts[1..].join(" "), 0),
+                }
             } else {
-                0
+                (parts[1..].join(" "), 0)
             };
 
             let entry = CinEntry::new(code.to_string());
             map.entry(code.to_string())
                 .or_insert(entry)
                 .add_word(WordEntry {
-                    word: word_text.to_string(),
+                    word: word_text,
                     freq,
                     pos: None,
                 });
@@ -296,6 +307,56 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].code, "bcj");
         assert_eq!(entries[0].words.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_word_with_spaces() {
+        // 词包含空格（英文短语），且最后一个字段不是数字时应整体保留
+        let content = "zdl Floyd 算法\nzdl Dijkstra 算法\nzdl SPFA\n";
+        let parser = CinParser::new("_");
+        let entries = parser.parse_str(content).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].code, "zdl");
+        assert_eq!(entries[0].words.len(), 3);
+        // 含空格词应完整保留，不能只取第二个字段
+        let floyd = entries[0].words.iter().find(|w| w.word == "Floyd 算法");
+        assert!(floyd.is_some(), "应保留完整词 'Floyd 算法'");
+        let spfa = entries[0].words.iter().find(|w| w.word == "SPFA");
+        assert!(spfa.is_some(), "应保留单词 'SPFA'");
+    }
+
+    #[test]
+    fn test_parse_word_with_spaces_and_freq() {
+        // 词含空格且带词频字段（末尾数字），应正确切分
+        let content = "zdl Floyd 算法 5\nwo 我 1000\n";
+        let parser = CinParser::new("_");
+        let entries = parser.parse_str(content).unwrap();
+        let zdl = entries.iter().find(|e| e.code == "zdl").unwrap();
+        assert_eq!(zdl.words[0].word, "Floyd 算法");
+        assert_eq!(zdl.words[0].freq, 5);
+        let wo = entries.iter().find(|e| e.code == "wo").unwrap();
+        assert_eq!(wo.words[0].word, "我");
+        assert_eq!(wo.words[0].freq, 1000);
+    }
+
+    #[test]
+    fn test_parse_freq_placeholder_rules() {
+        // code top 10         => 词 = "top",      词频 = 10
+        // code top 10 _       => 词 = "top 10",   词频 = 未设置(0)
+        // code top 10 _ _     => 词 = "top 10 _", 词频 = 未设置(0)
+        let content = "co top 10\nco top 10 _\nco top 10 _ _\n";
+        let parser = CinParser::new("_");
+        let entries = parser.parse_str(content).unwrap();
+        assert_eq!(entries.len(), 1);
+        let e = &entries[0];
+        assert_eq!(e.code, "co");
+        assert_eq!(e.words.len(), 3);
+        assert_eq!(e.words[0].word, "top");
+        assert_eq!(e.words[0].freq, 10);
+        assert_eq!(e.words[1].word, "top 10");
+        assert_eq!(e.words[1].freq, 0);
+        assert_eq!(e.words[2].word, "top 10 _");
+        assert_eq!(e.words[2].freq, 0);
     }
 
     #[test]
