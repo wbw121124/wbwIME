@@ -1,0 +1,64 @@
+# wbwIME 候选窗口示例配置
+# 所有字段均为可选，缺失字段使用默认值。
+
+# 词典路径（.cin 或 .fst）
+dict_path: "resources/dicts/base.cin"
+
+# 每页候选词数量
+page_size: 10
+
+# ---------- 窗口 ----------
+window:
+  background_color: "#FFFFFF"
+  border_color: "#CCCCCC"
+  border_width: 1
+  border_radius: 6
+  padding: 8
+  opacity: 1.0
+  font_name: "Microsoft YaHei"
+  font_size: 14
+  always_on_top: true
+
+# ---------- 缓冲栏（当前拼写） ----------
+buffer_bar:
+  visible: true
+  text_color: "#333333"
+  background_color: "#F5F5F5"
+  font_size: 14
+  height: 28
+  align: "left"
+
+# ---------- 候选栏 ----------
+candidate_bar:
+  background_color: "#FFFFFF"
+  spacing: 4
+  layout: "horizontal"
+
+# ---------- 候选条目 ----------
+candidate_item:
+  text_color: "#000000"
+  selected_text_color: "#FFFFFF"
+  selected_background_color: "#0078D4"
+  selected_border_radius: 4
+  padding_h: 6
+  padding_v: 2
+  font_size: 15
+  show_index: true
+  index_color: "#888888"
+
+# ---------- 翻页图标 ----------
+pagination:
+  visible: true
+  prev_icon: "◀"
+  next_icon: "▶"
+  icon_color: "#666666"
+  info_color: "#999999"
+  width: 60
+
+# ---------- 行为 ----------
+behavior:
+  fuzzy_enabled: true
+  l0_enabled: true
+  space_confirms: true
+  digit_selects: true
+  enter_confirms: true

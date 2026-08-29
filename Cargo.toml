@@ -11,6 +11,7 @@ members = [
     "crates/wbw-ime-native",
     "crates/wbw-ime-fbterm",
     "crates/wbw-ime-tsf",
+    "crates/wbw-ime-gui",
     "crates/wbw-cli",
 ]
 

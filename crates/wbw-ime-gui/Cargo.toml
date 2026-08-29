@@ -1,0 +1,29 @@
+[package]
+name = "wbw-ime-gui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "wbwIME Qt/QML 候选词窗口"
+
+[features]
+default = []
+# 启用 Qt/QML 渲染（需要本机安装 Qt6 或 Qt5，且提供 qmake/qmake6）
+qt = ["dep:qmetaobject", "dep:cstr"]
+
+[[bin]]
+name = "wbw-ime-gui"
+path = "src/main.rs"
+# 该二进制依赖 Qt，仅在显式启用 qt feature 时才构建
+required-features = ["qt"]
+
+[dependencies]
+wbw-types = { path = "../wbw-types" }
+wbw-dict = { path = "../wbw-dict" }
+wbw-matcher = { path = "../wbw-matcher" }
+wbw-rank = { path = "../wbw-rank" }
+wbw-imekit = { path = "../wbw-imekit" }
+serde = { workspace = true }
+serde_yaml = "0.9"
+qmetaobject = { version = "0.2.10", optional = true, default-features = false }
+cstr = { version = "0.2", optional = true }

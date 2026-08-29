@@ -14,7 +14,7 @@
   - `output.rs`：`#![allow(clippy::missing_const_for_thread_local)]`（x86_64-pc-windows-gnu 目标上的已知误报，rust-clippy#13422）
 
 ### 进行中
-- wbw-ime-gui — Qt 候选窗口（见下方计划，未开始实现，等待确认）
+- wbw-ime-gui — Qt 候选窗口（见下方计划）：引擎/config 已完成并通过 CI（纯 Rust，无 Qt 可编译测试）；Qt/QML `main.rs` 待本机安装 Qt6 后实机验证
 
 ## 参考项目研究
 
@@ -198,8 +198,10 @@ README 声称有"候选窗口"功能，但现状只有 `wbw-imekit::CandidateWin
 ```plain
 crates/wbw-ime-gui/
 ├── Cargo.toml          # 依赖 wbw-types/dict/matcher/rank/imekit；qmetaobject = { optional = true }
-├── src/lib.rs          # Engine：WbwIme 封装（ImeHost + Matcher + Ranker），纯逻辑、可单元测试（编译不依赖 Qt）
-└── src/main.rs         # `wbwime-qt` 二进制：QML 应用入口（#[cfg(feature = "qt")]）
+├── src/config.rs       # GuiConfig：YAML 主题/行为配置（纯 Rust，可测试）
+├── src/engine.rs       # WbwIme：ImeHost + Matcher + Ranker 引擎 + GuiState 视图（纯逻辑、可单元测试）
+├── src/lib.rs          # 重导出 config + engine
+├── src/main.rs         # `wbw-ime-gui` 二进制：QML 应用入口（required-features = ["qt"]）
 ```
 
 ### Cargo.toml 要点
@@ -209,13 +211,10 @@ crates/wbw-ime-gui/
 default = []
 qt = ["dep:qmetaobject"]
 
-[lib]
-name = "wbw_ime_gui"
-
 [[bin]]
-name = "wbwime-qt"
+name = "wbw-ime-gui"
 path = "src/main.rs"
-required-features = ["qt"]
+required-features = ["qt"]          # 仅在启用 qt 时构建，CI 无 Qt 保持全绿
 
 [dependencies]
 wbw-imekit = { path = "../wbw-imekit" }
@@ -223,10 +222,30 @@ wbw-types = { path = "../wbw-types" }
 wbw-matcher = { path = "../wbw-matcher" }
 wbw-rank = { path = "../wbw-rank" }
 wbw-dict = { path = "../wbw-dict" }
-qmetaobject = { version = "0.8", optional = true }
+serde_yaml = "0.9"
+qmetaobject = { version = "0.2.10", optional = true, default-features = false }
 ```
 
-### 引擎层（lib.rs，无 Qt 依赖）
+> 注：plan 早期写作 qmetaobject "0.8"，实际 crates.io 最新为 **0.2.10**（0.2.x 系列，README 概述里的 `0.8` 系笔误/误导）。`required-features = ["qt"]` 保证无 Qt 时 bin 与 qmetaobject 均不参与编译。
+
+### 配置层（config.rs，YAML，纯 Rust）
+
+提供高度可配置的候选窗口外观与行为，所有字段可选、缺失用默认值：
+
+```yaml
+dict_path: "resources/dicts/base.cin"   # 词典路径（.cin / .fst）
+page_size: 10                           # 每页候选词数量
+window:                                 # 窗口：背景/边框/圆角/透明度/字体/置顶
+buffer_bar:                             # 缓冲栏：可见性/颜色/高度/对齐
+candidate_bar:                          # 候选栏：背景/间距/排列方向
+candidate_item:                         # 候选条目：文字/选中高亮/内边距/是否显示序号
+pagination:                             # 翻页区：可见性/上一页/下一页图标/信息颜色
+behavior:                               # 行为：模糊/学习/空格确认/数字选词/回车确认
+```
+
+示例配置见 `resources/gui-config.yaml`。
+
+### 引擎层（engine.rs，无 Qt 依赖）
 
 复用 `wbw-ime-native` 的架构（不依赖其 cdylib，直接持有引擎）：
 
@@ -235,29 +254,31 @@ pub struct WbwIme {
     host: ImeHost,      // wbw-imekit 状态机
     matcher: Matcher,   // wbw-matcher 匹配
     ranker: Ranker,     // wbw-rank 排序
+    config: GuiConfig,  // 主题 + 行为
 }
 ```
 
-- `new(dict_path)`：从 `.cin`/`.fst` 加载词典（同 native `wbw_ime_create`）
-- `process(key_code: u32, char: Option<char>) -> WbwImeView`：
-  1. `host.process_key(KeyEvent)` 驱动状态机（输入/删除/确认/取消/翻页/选择）
-  2. 响应为 `InputChar` 时：`matcher.match_input(&InputContext{buffer,...})` → `ranker.rank()` 生成候选
-  3. 数字键 1-9 在候选非空时 → `select_candidate(idx)`；空格 → 选首个候选确认（IME 层补充按键映射）
-  4. 返回统一视图 `WbwImeView { buffer, candidates, selected_index, confirmed_text, visible }`
-- 单元测试直接写进 lib.rs（无需 Qt，CI 可跑）
+- `new(config, page_size)`：加载词典（同 native `wbw_ime_create`）；向 `host.window_manager_mut()` 注册一个默认候选窗口并 `set_active_window`（imekit 默认无 active window，需显式设置，否则 confirm/select/翻页不工作）
+- `process_key(code, ch) -> GuiState`：
+  1. 数字键 1-9 且输入中 → `select_candidate(idx)`（imekit `select_candidate` 不会清空缓冲，engine 在 Confirm 后 `host.reset()` 补清）
+  2. 空格且 `space_confirms` → `confirm()`
+  3. 字母/数字 → `host.input_char(ch)`（imekit 的 KeyMapper 默认**不映射字母**，需引擎层直接输入）
+  4. 其余功能键（Enter/Backspace/Esc/方向/翻页）→ `host.process_key`（imekit 默认映射 Enter13/Backspace8/Esc27/Up38/Down40/PageUp33/PageDown34）
+  5. `InputChar`/`DeleteChar` 响应后 → `matcher.match_input` → `ranker.rank` → `window.set_candidates` 注入候选 → `show`
+  6. 返回统一视图 `GuiState { buffer, candidates, selected_index, page, total_pages, visible, committed }`
+- 单元测试直接写进 engine.rs（无需 Qt，CI 可跑）
 
 ### QML 层（main.rs，仅 feature "qt"）
 
-- `#[derive(QObject)] struct ImeQml`：
-  - 属性：`buffer`、`candidates`（`QVariantList<String>`）、`selectedIndex`、`visible`、`document`（已上屏文本）
-  - `#[invokable]`：`processKey(key: i32, text: QString)`、`selectCandidate(i)`
-- QML（内联字符串，`QmlEngine::load_data`）：
-  - 根 `Item`（`focus: true` + `Keys.onPressed`）捕获全部按键 → `ime.processKey(...)`
-  - 顶部：文档区 `Text`（上屏文本，可换行）
-  - 底部：候选条 `Rectangle`（合成缓冲区 + 候选列表 `ListView`/`Repeater`，选中高亮）
-- 需要本机 Qt6：`qmake6` 在 PATH 或设 `Qt6_DIR`；运行 `cargo run -p wbw-ime-gui --features qt --bin wbwime-qt -- resources/dicts/base.cin`
+- `#[derive(QObject)] struct CandidateController`（QML 实例化，`qml_register_type::<CandidateController>(cstr!("WbwIme")...)`）：
+  - 属性：`buffer`（QString）、`candidates`（QStringList）、`selectedIndex`/`page`/`totalPages`（qint32）、`hasCandidates`（bool），均带 `NOTIFY stateChanged`
+  - 方法：`key_pressed(qt_key:i32, shift:bool)` 将 Qt 键值映射到 VK 后调引擎
+- 引擎经全局单例 `static ENGINE: Mutex<Option<WbwIme>>` 供控制器访问（Qt 单线程，无竞争）
+- 键值映射：Qt 字母 65..=90（含 Shift 大小写）、数字 48..=57、空格 32；Return 16777220→13、Backspace 16777219→8、Esc 16777216→27、Up 16777235→38、Down 16777237→40、PageUp 16777238→33、PageDown 16777239→34
+- QML（内联字符串 `QmlEngine::load_data`）：无边框半透明置顶 Window（`Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus`），含缓冲栏 / 候选栏（Repeater）/ 翻页区
+- 需要本机 Qt6：`qmake6` 在 PATH 或设 `QT_INCLUDE_PATH`/`QT_LIBRARY_PATH`；运行 `cargo run -p wbw-ime-gui --features qt --bin wbw-ime-gui -- resources/gui-config.yaml`
 
 ### 验证
 
-1. `cargo build --workspace`（无 qt feature）— CI 各 job 不受影响，全绿
-2. `cargo run -p wbw-ime-gui --features qt --bin wbwime-qt -- <dict.cin>` — GUI 演示：输拼音 → 候选出现 → 数字/空格选词 → 上屏
+1. `cargo build --workspace`（无 qt feature）— CI 各 job 不受影响，全绿（已通过，含 clippy --all-targets -D warnings）
+2. `cargo run -p wbw-ime-gui --features qt --bin wbw-ime-gui -- resources/gui-config.yaml` — GUI 演示：输拼音 → 候选出现 → 数字/空格选词 → 上屏（需本机 Qt6）
