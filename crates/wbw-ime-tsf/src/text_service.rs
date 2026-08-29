@@ -9,6 +9,11 @@ pub static IME_STATE: std::sync::Mutex<Option<crate::state::ImeState>> =
 
 // ========== ITfKeystrokeMgr vtable helpers ==========
 
+/// # Safety
+///
+/// `mgr_ptr` must be a valid pointer to an `ITfKeystrokeMgr` interface obtained
+/// from an active thread manager. `sink` must be a valid pointer to a COM object
+/// implementing `ITfKeyEventSink`. Both must remain alive across the call.
 pub unsafe fn advise_key_sink(
     mgr_ptr: *mut c_void,
     tid: u32,
@@ -21,6 +26,10 @@ pub unsafe fn advise_key_sink(
     unsafe { advise_fn(mgr_ptr, tid, sink, focus) }
 }
 
+/// # Safety
+///
+/// `mgr_ptr` must be a valid pointer to an `ITfKeystrokeMgr` interface that was
+/// previously advised via [`advise_key_sink`] with the given `tid`.
 pub unsafe fn unadvise_key_sink(mgr_ptr: *mut c_void, tid: u32) -> HRESULT {
     let vtable = unsafe { *(mgr_ptr as *const *const usize) };
     let unadvise_fn: unsafe extern "system" fn(*mut c_void, u32) -> HRESULT =

@@ -1,3 +1,4 @@
+#![allow(clippy::missing_const_for_thread_local)]
 use std::ffi::c_void;
 
 use crate::guid::*;
@@ -187,7 +188,13 @@ pub fn clipboard_paste(text: &str) {
     }
 }
 
-pub fn tsf_insert_text(thread_mgr: *mut c_void, _client_id: u32, text: &str) {
+/// Inserts `text` into the focused TSF context, falling back to the clipboard.
+///
+/// # Safety
+///
+/// `thread_mgr` must be a valid pointer to an active `ITfThreadMgr`, or null to
+/// force the clipboard fallback. The pointer must remain valid for the call.
+pub unsafe fn tsf_insert_text(thread_mgr: *mut c_void, _client_id: u32, text: &str) {
     if thread_mgr.is_null() || text.is_empty() {
         clipboard_paste(text);
         return;
@@ -242,7 +249,13 @@ pub fn tsf_insert_text(thread_mgr: *mut c_void, _client_id: u32, text: &str) {
     }
 }
 
-pub fn tsf_start_composition(thread_mgr: *mut c_void) {
+/// Starts a TSF composition tied to the active context.
+///
+/// # Safety
+///
+/// `thread_mgr` must be a valid pointer to an active `ITfThreadMgr`, or null.
+/// The pointer must remain valid for the call.
+pub unsafe fn tsf_start_composition(thread_mgr: *mut c_void) {
     if thread_mgr.is_null() {
         return;
     }
@@ -313,7 +326,13 @@ pub fn tsf_start_composition(thread_mgr: *mut c_void) {
     }
 }
 
-pub fn tsf_update_composition(thread_mgr: *mut c_void, text: &str) {
+/// Updates the visible composition text.
+///
+/// # Safety
+///
+/// `thread_mgr` must be a valid pointer to an active `ITfThreadMgr`, or null.
+/// The pointer must remain valid for the call.
+pub unsafe fn tsf_update_composition(thread_mgr: *mut c_void, text: &str) {
     if thread_mgr.is_null() || text.is_empty() {
         return;
     }

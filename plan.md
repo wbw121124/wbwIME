@@ -7,12 +7,14 @@
 - wbw-ime-native C API cdylib
 - wbw-ime-fbterm Linux fbterm IM 服务端
 - scripts/install.ps1 / uninstall.ps1 一键安装/卸载
-- CI 全绿
+- wbw-ime-tsf — 已用 windows-sys 纯手写 vtable 重写，Phase 1 编译通过、clippy 全绿
+- CI 修复 — 修复 wbw-ime-tsf 的 5 个 clippy 错误（run 33158385768 失败根因）：
+  - `output.rs`：`tsf_insert_text`/`tsf_start_composition`/`tsf_update_composition` 改为 `unsafe fn` 并补 `# Safety`（`not_unsafe_ptr_arg_deref`）
+  - `text_service.rs`：`advise_key_sink`/`unadvise_key_sink` 补 `# Safety`（`missing_safety_doc`）
+  - `output.rs`：`#![allow(clippy::missing_const_for_thread_local)]`（x86_64-pc-windows-gnu 目标上的已知误报，rust-clippy#13422）
 
-### 进行中（暂停）
-- wbw-ime-tsf — Windows TSF 输入法 DLL（编译未通过，暂停）
-  - 原因：`windows 0.59` crate 的 `ITfKeystrokeMgr::AdviseKeyEventSink` 签名需要 `Param<ITfKeyEventSink>`，无法直接传手动 vtable 指针
-  - 下次继续时选择方案A（windows-sys 纯手写）或方案B（IMM32）
+### 进行中
+- wbw-ime-gui — Qt 候选窗口（见下方计划，未开始实现，等待确认）
 
 ## 参考项目研究
 
@@ -176,3 +178,86 @@ windows-core = "0.59"  # for #[implement] macro
 2. **ITfThreadMgr::Activate**: 返回 `Result<u32>`，需要确认 client_id 用途
 3. **剪贴板输出延迟**: 50ms sleep + Ctrl+V 可能不够可靠
 4. **多线程安全**: IME_STATE 用 Mutex，TSF 可能在不同线程调用
+
+---
+
+## Qt 候选窗口计划：wbw-ime-gui
+
+### 动机
+
+README 声称有"候选窗口"功能，但现状只有 `wbw-imekit::CandidateWindow` 的纯逻辑模型（分页/选择/样式字段齐备，`render()` 只是 `println!` 到控制台），没有任何真实 GUI。真正的候选展示端只有 CLI 文本输出、fbterm（交由终端按 `ImWin` 渲染）、native C ABI（返回数据结构）。需要一个真正的 Qt 候选窗口。
+
+### 决策（已与用户确认）
+
+- **技术路线**：`qmetaobject` crate（纯 Rust Qt/QML 绑定，无需写 C++），QML 内联定义 UI
+- **功能范围**：完整接入 IME 按键流程（拼音输入 → 候选更新 → 选词上屏 → 翻页）
+- **CI 策略**：新增 cargo feature `qt`（默认关闭），`[[bin]] required-features = ["qt"]`。CI 无 Qt，默认 feature 下 bin 被跳过、qmetaobject 不编译，CI 保持全绿。
+
+### 目录结构
+
+```plain
+crates/wbw-ime-gui/
+├── Cargo.toml          # 依赖 wbw-types/dict/matcher/rank/imekit；qmetaobject = { optional = true }
+├── src/lib.rs          # Engine：WbwIme 封装（ImeHost + Matcher + Ranker），纯逻辑、可单元测试（编译不依赖 Qt）
+└── src/main.rs         # `wbwime-qt` 二进制：QML 应用入口（#[cfg(feature = "qt")]）
+```
+
+### Cargo.toml 要点
+
+```toml
+[features]
+default = []
+qt = ["dep:qmetaobject"]
+
+[lib]
+name = "wbw_ime_gui"
+
+[[bin]]
+name = "wbwime-qt"
+path = "src/main.rs"
+required-features = ["qt"]
+
+[dependencies]
+wbw-imekit = { path = "../wbw-imekit" }
+wbw-types = { path = "../wbw-types" }
+wbw-matcher = { path = "../wbw-matcher" }
+wbw-rank = { path = "../wbw-rank" }
+wbw-dict = { path = "../wbw-dict" }
+qmetaobject = { version = "0.8", optional = true }
+```
+
+### 引擎层（lib.rs，无 Qt 依赖）
+
+复用 `wbw-ime-native` 的架构（不依赖其 cdylib，直接持有引擎）：
+
+```rust
+pub struct WbwIme {
+    host: ImeHost,      // wbw-imekit 状态机
+    matcher: Matcher,   // wbw-matcher 匹配
+    ranker: Ranker,     // wbw-rank 排序
+}
+```
+
+- `new(dict_path)`：从 `.cin`/`.fst` 加载词典（同 native `wbw_ime_create`）
+- `process(key_code: u32, char: Option<char>) -> WbwImeView`：
+  1. `host.process_key(KeyEvent)` 驱动状态机（输入/删除/确认/取消/翻页/选择）
+  2. 响应为 `InputChar` 时：`matcher.match_input(&InputContext{buffer,...})` → `ranker.rank()` 生成候选
+  3. 数字键 1-9 在候选非空时 → `select_candidate(idx)`；空格 → 选首个候选确认（IME 层补充按键映射）
+  4. 返回统一视图 `WbwImeView { buffer, candidates, selected_index, confirmed_text, visible }`
+- 单元测试直接写进 lib.rs（无需 Qt，CI 可跑）
+
+### QML 层（main.rs，仅 feature "qt"）
+
+- `#[derive(QObject)] struct ImeQml`：
+  - 属性：`buffer`、`candidates`（`QVariantList<String>`）、`selectedIndex`、`visible`、`document`（已上屏文本）
+  - `#[invokable]`：`processKey(key: i32, text: QString)`、`selectCandidate(i)`
+- QML（内联字符串，`QmlEngine::load_data`）：
+  - 根 `Item`（`focus: true` + `Keys.onPressed`）捕获全部按键 → `ime.processKey(...)`
+  - 顶部：文档区 `Text`（上屏文本，可换行）
+  - 底部：候选条 `Rectangle`（合成缓冲区 + 候选列表 `ListView`/`Repeater`，选中高亮）
+- 需要本机 Qt6：`qmake6` 在 PATH 或设 `Qt6_DIR`；运行 `cargo run -p wbw-ime-gui --features qt --bin wbwime-qt -- resources/dicts/base.cin`
+
+### 验证
+
+1. `cargo build --workspace`（无 qt feature）— CI 各 job 不受影响，全绿
+2. `cargo run -p wbw-ime-gui --features qt --bin wbwime-qt -- <dict.cin>` — GUI 演示：输拼音 → 候选出现 → 数字/空格选词 → 上屏
