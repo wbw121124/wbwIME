@@ -14,7 +14,7 @@
   - `output.rs`：`#![allow(clippy::missing_const_for_thread_local)]`（x86_64-pc-windows-gnu 目标上的已知误报，rust-clippy#13422）
 
 ### 进行中
-- wbw-ime-gui — Qt 候选窗口（见下方计划）：引擎/config 已完成并通过 CI（纯 Rust，无 Qt 可编译测试）；Qt/QML `main.rs` 待本机安装 Qt6 后实机验证
+- wbw-ime-gui — **Slint** 候选窗口（见下方计划）：引擎/config 已完成并通过 CI（纯 Rust，无 Qt 可编译测试）；已用 Slint 原生 Rust 重写 UI，去掉 Qt/qmetaobject 依赖，SVG 图标/翻页位置/多字体/翻页键等均可配置
 
 ## 参考项目研究
 
@@ -181,52 +181,38 @@ windows-core = "0.59"  # for #[implement] macro
 
 ---
 
-## Qt 候选窗口计划：wbw-ime-gui
+## Slint 候选窗口计划：wbw-ime-gui
 
 ### 动机
 
-README 声称有"候选窗口"功能，但现状只有 `wbw-imekit::CandidateWindow` 的纯逻辑模型（分页/选择/样式字段齐备，`render()` 只是 `println!` 到控制台），没有任何真实 GUI。真正的候选展示端只有 CLI 文本输出、fbterm（交由终端按 `ImWin` 渲染）、native C ABI（返回数据结构）。需要一个真正的 Qt 候选窗口。
+README 声称有"候选窗口"功能，但现状只有 `wbw-imekit::CandidateWindow` 的纯逻辑模型（分页/选择/样式字段齐备，`render()` 只是 `println!` 到控制台），没有任何真实 GUI。真正的候选展示端只有 CLI 文本输出、fbterm（交由终端按 `ImWin` 渲染）、native C ABI（返回数据结构）。需要一个真正的候选窗口。
 
 ### 决策（已与用户确认）
 
-- **技术路线**：`qmetaobject` crate（纯 Rust Qt/QML 绑定，无需写 C++），QML 内联定义 UI
-- **功能范围**：完整接入 IME 按键流程（拼音输入 → 候选更新 → 选词上屏 → 翻页）
-- **CI 策略**：新增 cargo feature `qt`（默认关闭），`[[bin]] required-features = ["qt"]`。CI 无 Qt，默认 feature 下 bin 被跳过、qmetaobject 不编译，CI 保持全绿。
+- **初版技术路线（已废弃）**：`qmetaobject` 0.2.10 + Qt 6.8.1。**已确诊不兼容**：即便最简 `Window { visible:true }`（零自定义类型）也在 `QmlEngine::load_data`（内部 `QQmlApplicationEngine::loadData`）崩溃（堆损坏 `0xC0000374`，`RtlFreeHeap` 无效地址，gdb 栈回溯确认）。crates.io 上 qmetaobject 最新版就是 0.2.10，无 Qt 6.8 支持。Windows 真实平台无法使用。
+- **现方案**：**Slint**（`slint = "1"` + `slint-build = "1"`）。一等 Rust GUI，无 Qt/无 C++ 依赖，软件与 GL 双后端，CI 全绿（纯 Rust 编译 + 测试）。
+- **功能范围**：完整接入 IME 按键流程（拼音输入 → 候选更新 → 选词上屏 → 翻页），且支持扩展可配置项：
+  - 翻页图标支持 **SVG**（`.svg` 文件路径 / 内联 `<svg>` 字符串）或 Unicode 文本
+  - 翻页图标位置 `both / left / right`
+  - 候选栏词数量 **1-10**（`page_size` 在引擎层 `.clamp(1,10)`）
+  - `font_name` → **`font_family`**（多字体逗号分隔回退）
+  - 新增 **`font_feature_settings`**（仅作配置数据保留，见下方限制）
+  - 新增 **翻页键** 配置 `page_keys`（PageUp/PageDown、Up/Down、Left/Right、Minus/Equals 任意映射到翻页）
 
 ### 目录结构
 
 ```plain
 crates/wbw-ime-gui/
-├── Cargo.toml          # 依赖 wbw-types/dict/matcher/rank/imekit；qmetaobject = { optional = true }
-├── src/config.rs       # GuiConfig：YAML 主题/行为配置（纯 Rust，可测试）
-├── src/engine.rs       # WbwIme：ImeHost + Matcher + Ranker 引擎 + GuiState 视图（纯逻辑、可单元测试）
-├── src/lib.rs          # 重导出 config + engine
-├── src/main.rs         # `wbw-ime-gui` 二进制：QML 应用入口（required-features = ["qt"]）
+├── Cargo.toml            # 依赖各 wbw crate；slint = "1"（default 后端），build-dep slint-build = "1"
+├── build.rs              # slint_build::compile("ui/candidate_window.slint")
+├── ui/candidate_window.slint  # Slint 声明式 UI（Window + 缓冲栏 + 候选栏 + 翻页区 + FocusScope）
+├── src/config.rs         # GuiConfig：YAML 主题/行为配置（纯 Rust，可测试）
+├── src/engine.rs         # WbwIme：ImeHost + Matcher + Ranker 引擎 + GuiState 视图（纯逻辑、可单元测试）
+├── src/lib.rs            # 重导出 config + engine
+└── src/main.rs           # `wbw-ime-gui` 二进制：Slint 应用入口
 ```
 
-### Cargo.toml 要点
-
-```toml
-[features]
-default = []
-qt = ["dep:qmetaobject"]
-
-[[bin]]
-name = "wbw-ime-gui"
-path = "src/main.rs"
-required-features = ["qt"]          # 仅在启用 qt 时构建，CI 无 Qt 保持全绿
-
-[dependencies]
-wbw-imekit = { path = "../wbw-imekit" }
-wbw-types = { path = "../wbw-types" }
-wbw-matcher = { path = "../wbw-matcher" }
-wbw-rank = { path = "../wbw-rank" }
-wbw-dict = { path = "../wbw-dict" }
-serde_yaml = "0.9"
-qmetaobject = { version = "0.2.10", optional = true, default-features = false }
-```
-
-> 注：plan 早期写作 qmetaobject "0.8"，实际 crates.io 最新为 **0.2.10**（0.2.x 系列，README 概述里的 `0.8` 系笔误/误导）。`required-features = ["qt"]` 保证无 Qt 时 bin 与 qmetaobject 均不参与编译。
+> 注：`main.rs` 不再有 `required-features` 门控；无 Qt 依赖，workspace 任何目标机器都能构建。
 
 ### 配置层（config.rs，YAML，纯 Rust）
 
@@ -234,51 +220,64 @@ qmetaobject = { version = "0.2.10", optional = true, default-features = false }
 
 ```yaml
 dict_path: "resources/dicts/base.cin"   # 词典路径（.cin / .fst）
-page_size: 10                           # 每页候选词数量
-window:                                 # 窗口：背景/边框/圆角/透明度/字体/置顶
-buffer_bar:                             # 缓冲栏：可见性/颜色/高度/对齐
-candidate_bar:                          # 候选栏：背景/间距/排列方向
-candidate_item:                         # 候选条目：文字/选中高亮/内边距/是否显示序号
-pagination:                             # 翻页区：可见性/上一页/下一页图标/信息颜色
-behavior:                               # 行为：模糊/学习/空格确认/数字选词/回车确认
+page_size: 10                           # 每页候选词数量（引擎层钳制 1-10）
+window:
+  background_color / border_color / border_width / border_radius
+  padding / opacity
+  font_family: "Microsoft YaHei, SimHei, sans-serif"   # 多字体逗号分隔
+  font_size
+  font_feature_settings: ""             # 注：Slint 暂未提供 font-feature-settings，仅存配置数据
+  always_on_top: true                   # 在 .slint 中固定 no-frame + always-on-top
+buffer_bar:           # 缓冲栏：visible/颜色/字号/高度/对齐
+candidate_bar:        # 候选栏：背景/间距/layout(horizontal|vertical)
+candidate_item:       # 候选条目：文字/选中高亮/圆角/内边距/字号/show_index/序号颜色
+pagination:           # 翻页区：visible/position(both|left|right)/prev_icon/next_icon/icon_color/info_color
+behavior:             # 行为：fuzzy/l0/space_confirms/digit_selects/enter_confirms + page_keys
 ```
 
 示例配置见 `resources/gui-config.yaml`。
 
-### 引擎层（engine.rs，无 Qt 依赖）
+### 引擎层（engine.rs，无 UI 依赖）
 
 复用 `wbw-ime-native` 的架构（不依赖其 cdylib，直接持有引擎）：
 
 ```rust
 pub struct WbwIme {
-    host: ImeHost,      // wbw-imekit 状态机
-    matcher: Matcher,   // wbw-matcher 匹配
-    ranker: Ranker,     // wbw-rank 排序
-    config: GuiConfig,  // 主题 + 行为
+    host: ImeHost,
+    matcher: Matcher,
+    ranker: Ranker,
+    config: GuiConfig,
 }
 ```
 
-- `new(config, page_size)`：加载词典（同 native `wbw_ime_create`）；向 `host.window_manager_mut()` 注册一个默认候选窗口并 `set_active_window`（imekit 默认无 active window，需显式设置，否则 confirm/select/翻页不工作）
-- `process_key(code, ch) -> GuiState`：
-  1. 数字键 1-9 且输入中 → `select_candidate(idx)`（imekit `select_candidate` 不会清空缓冲，engine 在 Confirm 后 `host.reset()` 补清）
-  2. 空格且 `space_confirms` → `confirm()`
-  3. 字母/数字 → `host.input_char(ch)`（imekit 的 KeyMapper 默认**不映射字母**，需引擎层直接输入）
-  4. 其余功能键（Enter/Backspace/Esc/方向/翻页）→ `host.process_key`（imekit 默认映射 Enter13/Backspace8/Esc27/Up38/Down40/PageUp33/PageDown34）
-  5. `InputChar`/`DeleteChar` 响应后 → `matcher.match_input` → `ranker.rank` → `window.set_candidates` 注入候选 → `show`
-  6. 返回统一视图 `GuiState { buffer, candidates, selected_index, page, total_pages, visible, committed }`
-- 单元测试直接写进 engine.rs（无需 Qt，CI 可跑）
+- `new(config, page_size)`：加载词典；向 `host.window_manager_mut()` 注册默认候选窗口并 `set_active_window`；`page_size` 用 `.clamp(1,10)`
+- `process_key(code, ch) -> GuiState`：数字/空格确认/字母输入/功能键（Enter/Backspace/Esc/方向/翻页），更新候选与分页，返回 `GuiState { buffer, candidates, selected_index, page, total_pages, visible, committed }`
+- 单元测试直接写进 engine.rs（无 UI，CI 可跑）
 
-### QML 层（main.rs，仅 feature "qt"）
+### UI 层（Slint：candidate_window.slint + main.rs）
 
-- `#[derive(QObject)] struct CandidateController`（QML 实例化，`qml_register_type::<CandidateController>(cstr!("WbwIme")...)`）：
-  - 属性：`buffer`（QString）、`candidates`（QStringList）、`selectedIndex`/`page`/`totalPages`（qint32）、`hasCandidates`（bool），均带 `NOTIFY stateChanged`
-  - 方法：`key_pressed(qt_key:i32, shift:bool)` 将 Qt 键值映射到 VK 后调引擎
-- 引擎经全局单例 `static ENGINE: Mutex<Option<WbwIme>>` 供控制器访问（Qt 单线程，无竞争）
-- 键值映射：Qt 字母 65..=90（含 Shift 大小写）、数字 48..=57、空格 32；Return 16777220→13、Backspace 16777219→8、Esc 16777216→27、Up 16777235→38、Down 16777237→40、PageUp 16777238→33、PageDown 16777239→34
-- QML（内联字符串 `QmlEngine::load_data`）：无边框半透明置顶 Window（`Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus`），含缓冲栏 / 候选栏（Repeater）/ 翻页区
-- 需要本机 Qt6：`qmake6` 在 PATH 或设 `QT_INCLUDE_PATH`/`QT_LIBRARY_PATH`；运行 `cargo run -p wbw-ime-gui --features qt --bin wbw-ime-gui -- resources/gui-config.yaml`
+- **`.slint`**：`export component CandidateWindow inherits Window`，属性全部 `in`（由 Rust 注入），回调 `item-clicked(int)`/`prev-page()`/`next-page()`/`route-key(string)` 交 Rust 处理
+  - 根 `Window`：`no-frame: true; always-on-top: true; forward-focus: scope;`
+  - `IconButton`（顶层 component，支持 SVG 图片或 Unicode 文本，`TouchArea.clicked`）
+  - 候选区：`if !vertical-layout` 水平布局 / `if vertical-layout` 垂直布局，`for candidate[idx] in candidates` 生成条目
+  - 翻页区：三个 `if` 分支实现 `both`（两端）/`left`（靠左）/`right`（靠右，前置弹性占位）
+  - `scope := FocusScope`：捕获键盘，将 `event.text` 经 `route-key` 转发给 Rust
+  - Slint 要点：内置 `VerticalLayout`/`HorizontalLayout` 无需 import；所有 `length` 需显式 `px`；`component` 只能声明在顶层；用 `forward-focus`/`focus()` 而非 `focus: true`
+- **`main.rs`**：
+  - `slint::include_modules!()`；`apply_config` 注入主题（颜色转 `Brush::SolidColor`，length 用 `f32`，候选为 `ModelRc<SharedString>`）
+  - `resolve_icon`：`.svg` 路径 → `Image::load_from_path`；内联 `<svg>` → 写临时文件后 `load_from_path`（Slint 默认后端支持 SVG，无需额外 feature）
+  - 键盘：`FocusScope` 的 `event.text`（具名键编码为私有 Unicode 字符）→ `slint::platform::Key` 转 `char` 识别 → 依 `page_keys` 重映射为 33/34 → `engine.process_key`
+  - 引擎经 `static ENGINE: Mutex<Option<WbwIme>>` 全局访问（Slint 单线程事件循环）
+  - 窗口初始 `hide()`，有候选时 `show()`，无候选时 `hide()`
+
+### 已知限制
+
+- **`font_feature_settings` 无法渲染**：Slint 的 `Text` 元素目前只有 `font-family/font-size/font-weight/font-style`，没有 `font-feature-settings` 属性，因此该字段仅作为配置数据保留，待 Slint 支持后启用（已在 config.rs 注释中说明）。
+- **键盘捕获**：Slint 窗口需获得系统焦点才收到按键（`FocusScope` + `forward-focus`）；本方案是聚焦候选窗口捕获输入。跨应用全局热键捕获不在此窗口职责内。
 
 ### 验证
 
-1. `cargo build --workspace`（无 qt feature）— CI 各 job 不受影响，全绿（已通过，含 clippy --all-targets -D warnings）
-2. `cargo run -p wbw-ime-gui --features qt --bin wbw-ime-gui -- resources/gui-config.yaml` — GUI 演示：输拼音 → 候选出现 → 数字/空格选词 → 上屏（需本机 Qt6）
+1. `cargo build/clippy --workspace` — 全绿（无 Qt，`-D warnings`）
+2. `cargo test --workspace` — config/engine 单元测试全过
+3. `cargo run -p wbw-ime-gui --bin wbw-ime-gui -- resources/gui-config.yaml` — GUI：输拼音 → 候选出现 → 数字/空格选词 → 翻页（本机需可用的窗口系统）
+4. 冒烟：release 版启动 6 秒不崩溃即通过初始化（窗口初始隐藏）

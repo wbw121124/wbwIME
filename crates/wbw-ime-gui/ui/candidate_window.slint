@@ -1,0 +1,292 @@
+// wbwIME 候选词窗口（Slint）
+//
+// 主题/数据全部由外部注入（Rust 侧 CandidateWindow::from_config 设置属性），
+// 交互通过回调交给 Rust 处理：
+//   - item-clicked(int)：点击第 idx 个候选（等价数字键 idx+1）
+//   - prev-page() / next-page()：点击翻页图标
+//   - 系统键盘事件由 Rust 的 window().on_key_pressed 处理
+//
+// 布局使用 Slint 内置 VerticalLayout / HorizontalLayout（无需 import）。
+// 所有 length 均需显式 px 单位。
+
+// 可点击的翻页图标（支持 SVG 图片或 Unicode 文本）
+component IconButton inherits Rectangle {
+    in property <bool> is-svg;
+    in property <string> icon-text;
+    in property <image> icon-image;
+    in property <brush> icon-color;
+    in property <string> font-family;
+    callback clicked();
+
+    background: transparent;
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+        HorizontalLayout {
+            if is-svg: Image {
+                source: icon-image;
+                width: 16px;
+                height: 16px;
+            }
+            if !is-svg: Text {
+                text: icon-text;
+                color: icon-color;
+                font-size: 14px;
+                font-family: font-family;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+export component CandidateWindow inherits Window {
+    // —— 数据 ——
+    in property <string> buffer;
+    in property <[string]> candidates;
+    in property <int> selected-index;
+    in property <int> page;
+    in property <int> total-pages;
+    in property <bool> buffer-visible;
+    in property <bool> pagination-visible;
+    in property <bool> show-index;
+    in property <bool> vertical-layout;
+
+    // —— 回调（由 Rust 实现）——
+    callback item-clicked(int);
+    callback prev-page();
+    callback next-page();
+    // 向 Rust 转发原始按键文本（来自 FocusScope.key-pressed 的 event.text）
+    callback route-key(string);
+
+    // —— 窗口/字体主题 ——
+    in property <brush> window-background;
+    in property <brush> window-border;
+    in property <length> window-border-width;
+    in property <length> window-radius;
+    in property <length> window-padding;
+    in property <float> window-opacity;
+    in property <string> font-family;
+    in property <length> font-size;
+
+    // —— 缓冲栏 ——
+    in property <brush> buffer-background;
+    in property <brush> buffer-text;
+    in property <length> buffer-font-size;
+    in property <length> buffer-height;
+
+    // —— 候选栏 ——
+    in property <brush> candidate-background;
+    in property <length> candidate-spacing;
+    in property <brush> item-text;
+    in property <brush> item-index-text;
+    in property <brush> item-selected-background;
+    in property <brush> item-selected-text;
+    in property <length> item-radius;
+    in property <length> item-padding-h;
+    in property <length> item-padding-v;
+    in property <length> item-font-size;
+
+    // —— 翻页 ——
+    // position: "both" / "left" / "right"
+    in property <string> pagination-position;
+    in property <string> prev-icon-text;
+    in property <string> next-icon-text;
+    in property <bool> prev-is-svg;
+    in property <bool> next-is-svg;
+    in property <image> prev-image;
+    in property <image> next-image;
+    in property <brush> icon-color;
+    in property <brush> info-color;
+
+    background: transparent;
+    no-frame: true;
+    always-on-top: true;
+    forward-focus: scope;
+
+    // —— 根内容 ——
+    Rectangle {
+        background: window-background;
+        border-radius: window-radius;
+        border-width: window-border-width;
+        border-color: window-border;
+        opacity: window-opacity;
+        clip: true;
+
+        VerticalLayout {
+            padding: window-padding;
+            spacing: 2px;
+
+            // 缓冲栏
+            Rectangle {
+                visible: buffer-visible && buffer != "";
+                background: buffer-background;
+                height: buffer-height;
+                border-radius: 2px;
+                Text {
+                    text: buffer;
+                    color: buffer-text;
+                    font-size: buffer-font-size;
+                    font-family: font-family;
+                    horizontal-stretch: 1;
+                    horizontal-alignment: left;
+                    vertical-alignment: center;
+                }
+            }
+
+            // 候选区：水平布局
+            if !vertical-layout: HorizontalLayout {
+                spacing: candidate-spacing;
+                for candidate[idx] in candidates: Rectangle {
+                    background: idx == selected-index ? item-selected-background : transparent;
+                    border-radius: item-radius;
+                    horizontal-stretch: 0;
+                    HorizontalLayout {
+                        padding-left: item-padding-h;
+                        padding-right: item-padding-h;
+                        padding-top: item-padding-v;
+                        padding-bottom: item-padding-v;
+                        Text {
+                            text: show-index ? (idx + 1) + ". " + candidate : candidate;
+                            color: idx == selected-index ? item-selected-text : item-text;
+                            font-size: item-font-size;
+                            font-family: font-family;
+                        }
+                    }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { item-clicked(idx); }
+                    }
+                }
+            }
+
+            // 候选区：垂直布局（可配置）
+            if vertical-layout: VerticalLayout {
+                spacing: candidate-spacing;
+                for candidate[idx] in candidates: Rectangle {
+                    background: idx == selected-index ? item-selected-background : transparent;
+                    border-radius: item-radius;
+                    HorizontalLayout {
+                        padding-left: item-padding-h;
+                        padding-right: item-padding-h;
+                        padding-top: item-padding-v;
+                        padding-bottom: item-padding-v;
+                        Text {
+                            text: show-index ? (idx + 1) + ". " + candidate : candidate;
+                            color: idx == selected-index ? item-selected-text : item-text;
+                            font-size: item-font-size;
+                            font-family: font-family;
+                        }
+                    }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { item-clicked(idx); }
+                    }
+                }
+            }
+
+            // 翻页区：both（两端）
+            if pagination-visible && pagination-position == "both": HorizontalLayout {
+                height: 22px;
+                IconButton {
+                    is-svg: prev-is-svg;
+                    icon-text: prev-icon-text;
+                    icon-image: prev-image;
+                    icon-color: icon-color;
+                    font-family: font-family;
+                    horizontal-stretch: 0;
+                    clicked => { prev-page(); }
+                }
+                Text {
+                    text: (page + 1) + "/" + max(total-pages, 1);
+                    color: info-color;
+                    font-size: 12px;
+                    font-family: font-family;
+                    horizontal-stretch: 1;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                IconButton {
+                    is-svg: next-is-svg;
+                    icon-text: next-icon-text;
+                    icon-image: next-image;
+                    icon-color: icon-color;
+                    font-family: font-family;
+                    horizontal-stretch: 0;
+                    clicked => { next-page(); }
+                }
+            }
+
+            // 翻页区：left（靠左）
+            if pagination-visible && pagination-position == "left": HorizontalLayout {
+                height: 22px;
+                IconButton {
+                    is-svg: prev-is-svg;
+                    icon-text: prev-icon-text;
+                    icon-image: prev-image;
+                    icon-color: icon-color;
+                    font-family: font-family;
+                    horizontal-stretch: 0;
+                    clicked => { prev-page(); }
+                }
+                Text {
+                    text: (page + 1) + "/" + max(total-pages, 1);
+                    color: info-color;
+                    font-size: 12px;
+                    font-family: font-family;
+                    horizontal-stretch: 0;
+                    vertical-alignment: center;
+                }
+                IconButton {
+                    is-svg: next-is-svg;
+                    icon-text: next-icon-text;
+                    icon-image: next-image;
+                    icon-color: icon-color;
+                    font-family: font-family;
+                    horizontal-stretch: 0;
+                    clicked => { next-page(); }
+                }
+            }
+
+            // 翻页区：right（靠右），前方放弹性占位以右对齐
+            if pagination-visible && pagination-position == "right": HorizontalLayout {
+                height: 22px;
+                Rectangle { horizontal-stretch: 1; background: transparent; }
+                IconButton {
+                    is-svg: prev-is-svg;
+                    icon-text: prev-icon-text;
+                    icon-image: prev-image;
+                    icon-color: icon-color;
+                    font-family: font-family;
+                    horizontal-stretch: 0;
+                    clicked => { prev-page(); }
+                }
+                Text {
+                    text: (page + 1) + "/" + max(total-pages, 1);
+                    color: info-color;
+                    font-size: 12px;
+                    font-family: font-family;
+                    horizontal-stretch: 0;
+                    vertical-alignment: center;
+                }
+                IconButton {
+                    is-svg: next-is-svg;
+                    icon-text: next-icon-text;
+                    icon-image: next-image;
+                    icon-color: icon-color;
+                    font-family: font-family;
+                    horizontal-stretch: 0;
+                    clicked => { next-page(); }
+            }
+        }
+    }
+
+    // 捕获键盘输入（窗口聚焦时），转发给 Rust 处理
+    scope := FocusScope {
+        enabled: true;
+        key-pressed(event) => {
+            route-key(event.text);
+            accept;
+        }
+    }
+}
+}

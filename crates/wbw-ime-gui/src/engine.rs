@@ -48,7 +48,8 @@ impl WbwIme {
     /// 创建引擎并加载词典
     pub fn new(config: GuiConfig, page_size: usize) -> Self {
         let mut config = config;
-        config.page_size = page_size.max(1);
+        // 每页候选词数量限制在 1-10
+        config.page_size = page_size.clamp(1, 10);
 
         // 加载词典
         let dict = load_dict(&config.dict_path).unwrap_or_default_fst();
@@ -280,7 +281,7 @@ fn build_ime_window_style(config: &GuiConfig) -> WindowStyle {
         border_color: config.window.border_color.clone(),
         border_width: config.window.border_width,
         font_size: config.window.font_size,
-        font_name: config.window.font_name.clone(),
+        font_name: config.window.font_family.clone(),
         border_radius: config.window.border_radius,
         padding: config.window.padding,
         opacity: config.window.opacity,

@@ -1,10 +1,11 @@
-# wbwIME 候选窗口示例配置
+# wbwIME 候选窗口示例配置（Slint 方案）
 # 所有字段均为可选，缺失字段使用默认值。
+# 说明：窗口置顶(always-on-top)与无边框(no-frame)在 Slint UI 中已固定开启。
 
 # 词典路径（.cin 或 .fst）
 dict_path: "resources/dicts/base.cin"
 
-# 每页候选词数量
+# 每页候选词数量（1-10，超出会被钳制）
 page_size: 10
 
 # ---------- 窗口 ----------
@@ -15,9 +16,12 @@ window:
   border_radius: 6
   padding: 8
   opacity: 1.0
-  font_name: "Microsoft YaHei"
+  # 字体族（多字体用逗号分隔，按序回退）
+  font_family: "Microsoft YaHei, SimHei, sans-serif"
   font_size: 14
-  always_on_top: true
+  # OpenType 字体特性（如 "liga 1, tnum 1"）。
+  # 注：Slint 当前版本暂未提供 font-feature-settings 渲染属性，仅作为配置数据保留。
+  font_feature_settings: ""
 
 # ---------- 缓冲栏（当前拼写） ----------
 buffer_bar:
@@ -32,7 +36,7 @@ buffer_bar:
 candidate_bar:
   background_color: "#FFFFFF"
   spacing: 4
-  layout: "horizontal"
+  layout: "horizontal"   # horizontal / vertical
 
 # ---------- 候选条目 ----------
 candidate_item:
@@ -49,11 +53,13 @@ candidate_item:
 # ---------- 翻页图标 ----------
 pagination:
   visible: true
+  # 位置：both（两端）/ left（靠左） / right（靠右）
+  position: "both"
+  # 图标：Unicode 文本（如 ◀ / ▶），或 SVG（.svg 文件路径 / 内联 <svg> 字符串）
   prev_icon: "◀"
   next_icon: "▶"
-  icon_color: "#666666"
-  info_color: "#999999"
-  width: 60
+  icon_color: "#666666"   # 仅文本图标生效
+  info_color: "#999999"    # 页码提示文字颜色
 
 # ---------- 行为 ----------
 behavior:
@@ -62,3 +68,8 @@ behavior:
   space_confirms: true
   digit_selects: true
   enter_confirms: true
+  # 翻页键：previous 触发上一页，next 触发下一页。
+  # 可选项：PageUp / PageDown / Up / Down / Left / Right / Minus / Equals
+  page_keys:
+    previous: ["PageUp"]
+    next: ["PageDown"]

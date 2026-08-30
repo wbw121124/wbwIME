@@ -58,10 +58,14 @@ pub struct WindowConfig {
     pub padding: u32,
     /// 透明度（0.0 ~ 1.0）
     pub opacity: f64,
-    /// 字体名称
-    pub font_name: String,
+    /// 字体族（支持多个，逗号分隔，如 "Microsoft YaHei, SimHei, sans-serif"）
+    pub font_family: String,
     /// 字体大小
     pub font_size: u32,
+    /// OpenType 字体特性（如 "liga 1, calt 1, tnum 1"）。
+    /// 注：Slint 当前版本暂未提供 font-feature-settings 渲染属性，
+    /// 该字段作为配置数据保留，待 Slint 支持后启用。
+    pub font_feature_settings: String,
     /// 是否置顶
     pub always_on_top: bool,
 }
@@ -75,8 +79,9 @@ impl Default for WindowConfig {
             border_radius: 4,
             padding: 8,
             opacity: 1.0,
-            font_name: "Microsoft YaHei".to_string(),
+            font_family: "Microsoft YaHei, SimHei, sans-serif".to_string(),
             font_size: 14,
+            font_feature_settings: String::new(),
             always_on_top: true,
         }
     }
@@ -181,27 +186,46 @@ impl Default for CandidateItemConfig {
 pub struct PaginationConfig {
     /// 是否显示翻页区
     pub visible: bool,
-    /// 上一页图标文本（支持 Unicode，如 ◀）
+    /// 翻页图标位置：both（两端）/ left（靠左）/ right（靠右）
+    pub position: String,
+    /// 上一页图标：Unicode 文本（如 ◀）或 SVG（.svg 路径 / data:image/svg+xml 字符串）
     pub prev_icon: String,
-    /// 下一页图标文本（如 ▶）
+    /// 下一页图标：Unicode 文本（如 ▶）或 SVG（.svg 路径 / data:image/svg+xml 字符串）
     pub next_icon: String,
-    /// 图标颜色
+    /// 图标颜色（仅文本图标生效）
     pub icon_color: String,
     /// 提示文字颜色（如 1/3 页）
     pub info_color: String,
-    /// 宽度
-    pub width: u32,
 }
 
 impl Default for PaginationConfig {
     fn default() -> Self {
         Self {
             visible: true,
+            position: "both".to_string(),
             prev_icon: "◀".to_string(),
             next_icon: "▶".to_string(),
             icon_color: "#666666".to_string(),
             info_color: "#999999".to_string(),
-            width: 60,
+        }
+    }
+}
+
+/// 翻页键（触发上一页 / 下一页的按键）
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct PageKeys {
+    /// 触发上一页的按键，可选：PageUp / Up / Left / Minus
+    pub previous: Vec<String>,
+    /// 触发下一页的按键，可选：PageDown / Down / Right / Equals
+    pub next: Vec<String>,
+}
+
+impl Default for PageKeys {
+    fn default() -> Self {
+        Self {
+            previous: vec!["PageUp".to_string()],
+            next: vec!["PageDown".to_string()],
         }
     }
 }
@@ -220,6 +244,8 @@ pub struct BehaviorConfig {
     pub digit_selects: bool,
     /// 是否启用回车确认
     pub enter_confirms: bool,
+    /// 翻页键设置
+    pub page_keys: PageKeys,
 }
 
 impl Default for BehaviorConfig {
@@ -230,6 +256,7 @@ impl Default for BehaviorConfig {
             space_confirms: true,
             digit_selects: true,
             enter_confirms: true,
+            page_keys: PageKeys::default(),
         }
     }
 }
@@ -259,6 +286,14 @@ mod tests {
         assert_eq!(config.page_size, 10);
         assert!(!config.window.background_color.is_empty());
         assert_eq!(config.candidate_item.selected_background_color, "#0078D4");
+        // 新增字段默认值
+        assert!(config.window.font_family.contains("Microsoft YaHei"));
+        assert!(config.window.font_feature_settings.is_empty());
+        assert_eq!(config.pagination.position, "both");
+        assert_eq!(config.pagination.prev_icon, "◀");
+        assert_eq!(config.pagination.next_icon, "▶");
+        assert_eq!(config.behavior.page_keys.previous, vec!["PageUp".to_string()]);
+        assert_eq!(config.behavior.page_keys.next, vec!["PageDown".to_string()]);
     }
 
     #[test]
@@ -269,19 +304,33 @@ page_size: 8
 window:
   background_color: "#202020"
   opacity: 0.95
+  font_family: "Source Han Serif SC"
+  font_feature_settings: "ss01"
 candidate_item:
   font_size: 18
 pagination:
+  position: "left"
   prev_icon: "←"
+behavior:
+  page_keys:
+    previous: ["Left"]
+    next: ["Right"]
 "##;
         let config = GuiConfig::from_yaml(yaml);
         assert_eq!(config.page_size, 8);
         assert_eq!(config.window.background_color, "#202020");
         assert_eq!(config.window.opacity, 0.95);
+        assert_eq!(config.window.font_family, "Source Han Serif SC");
+        assert_eq!(config.window.font_feature_settings, "ss01");
         // 未提供的字段使用默认值
         assert_eq!(config.candidate_item.text_color, "#000000");
         assert_eq!(config.candidate_item.font_size, 18);
         assert_eq!(config.pagination.prev_icon, "←");
+        assert_eq!(config.pagination.position, "left");
+        assert_eq!(config.behavior.page_keys.previous, vec!["Left".to_string()]);
+        assert_eq!(config.behavior.page_keys.next, vec!["Right".to_string()]);
+        // 翻页区可见性默认保持
+        assert!(config.pagination.visible);
     }
 
     #[test]
