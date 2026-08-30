@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod engine;
+pub mod ipc;
 
 pub use config::GuiConfig;
 pub use engine::{GuiState, WbwIme};

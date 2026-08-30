@@ -5704,10 +5704,19 @@ dependencies = [
  "slint",
  "slint-build",
  "wbw-dict",
+ "wbw-ime-ipc",
  "wbw-imekit",
  "wbw-matcher",
  "wbw-rank",
  "wbw-types",
+]
+
+[[package]]
+name = "wbw-ime-ipc"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -5726,6 +5735,7 @@ name = "wbw-ime-tsf"
 version = "0.1.0"
 dependencies = [
  "wbw-dict",
+ "wbw-ime-ipc",
  "wbw-imekit",
  "wbw-matcher",
  "wbw-rank",

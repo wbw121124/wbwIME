@@ -15,6 +15,7 @@ wbw-dict = { path = "../wbw-dict" }
 wbw-matcher = { path = "../wbw-matcher" }
 wbw-rank = { path = "../wbw-rank" }
 wbw-imekit = { path = "../wbw-imekit" }
+wbw-ime-ipc = { path = "../wbw-ime-ipc" }
 
 [dependencies.windows-sys]
 version = "0.59"
@@ -28,4 +29,5 @@ features = [
     "Win32_System_DataExchange",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_TextServices",
+    "Win32_UI_WindowsAndMessaging",
 ]

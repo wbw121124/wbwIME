@@ -7,6 +7,39 @@ use crate::output::{HRESULT, S_OK, ULONG};
 pub static IME_STATE: std::sync::Mutex<Option<crate::state::ImeState>> =
     std::sync::Mutex::new(None);
 
+/// 当前会话激活的 `ITfThreadMgr` 指针（供 IPC 取光标坐标）。
+pub static THREAD_MGR: std::sync::atomic::AtomicPtr<std::ffi::c_void> =
+    std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+/// 当前会话激活的 TfClientId（`ITfContext::RequestEditSession` 需要）。
+pub static CLIENT_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// 字典加载是否已尝试过（保证只初始化一次，且避免在 DllMain 的加载器锁下做重工作）。
+static STATE_INITIALIZED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// 惰性初始化输入法状态。
+///
+/// 从 DllMain 中移除字典/引擎的加载（那会在加载器锁下做内存分配和文件 IO，
+/// 容易导致 regsvr32 及真实应用的崩溃/死锁——典型表现为 0xC000013A），
+/// 改为在首次按键处理时懒加载。
+pub fn ensure_state_loaded() {
+    if STATE_INITIALIZED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let home = std::env::var("USERPROFILE").unwrap_or_default();
+    let dict_path = std::path::PathBuf::from(&home)
+        .join("AppData")
+        .join("Roaming")
+        .join("wbwIME")
+        .join("dict.fst");
+    if dict_path.exists() {
+        if let Some(state) = crate::state::ImeState::new(&dict_path.to_string_lossy()) {
+            *IME_STATE.lock().unwrap() = Some(state);
+        }
+    }
+}
+
 // ========== ITfKeystrokeMgr vtable helpers ==========
 
 /// # Safety
@@ -171,6 +204,8 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void) -> H
 
     ts.client_id = (this as usize & 0xFFFF) as u32;
     ts.thread_mgr = thread_mgr;
+    THREAD_MGR.store(thread_mgr, std::sync::atomic::Ordering::SeqCst);
+    CLIENT_ID.store(ts.client_id, std::sync::atomic::Ordering::SeqCst);
 
     let hr = unsafe { advise_key_sink(keystroke_mgr, ts.client_id, this, 1) };
 
@@ -224,6 +259,7 @@ unsafe extern "system" fn ts_deactivate(this: *mut c_void) -> HRESULT {
             release_fn(ts.thread_mgr);
         }
         ts.thread_mgr = std::ptr::null_mut();
+        THREAD_MGR.store(std::ptr::null_mut(), std::sync::atomic::Ordering::SeqCst);
     }
 
     S_OK
@@ -250,6 +286,7 @@ unsafe extern "system" fn ks_test_key_down(
     _l_param: u32,
     pf_eaten: *mut i32,
 ) -> HRESULT {
+    ensure_state_loaded();
     unsafe {
         *pf_eaten = 0;
     }
@@ -290,6 +327,7 @@ unsafe extern "system" fn ks_key_down(
     _l_param: u32,
     pf_eaten: *mut i32,
 ) -> HRESULT {
+    ensure_state_loaded();
     unsafe {
         *pf_eaten = 0;
     }
@@ -328,6 +366,9 @@ unsafe extern "system" fn ks_key_down(
             output::clipboard_paste(&text);
         }
     }
+
+    // 根据新的组合状态向候选窗口发送 Show/Hide（尽力而为，失败静默忽略）
+    crate::ipc::refresh_gui();
 
     S_OK
 }

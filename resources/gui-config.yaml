@@ -8,6 +8,12 @@ dict_path: "resources/dicts/base.cin"
 # 每页候选词数量（1-10，超出会被钳制）
 page_size: 10
 
+# 预设主题：dark / dark_plus / light / light_plus（仿 VSCode 配色）。
+# 该字段会覆写所有颜色类字段（窗口/缓冲/候选/翻页的配色），
+# 非颜色字段（布局、字号、行为等）不受影响。
+# 若留空或填 custom，则完全使用下面 YAML 中的颜色。
+theme: "light"
+
 # ---------- 窗口 ----------
 window:
   background_color: "#FFFFFF"
@@ -36,7 +42,7 @@ buffer_bar:
 candidate_bar:
   background_color: "#FFFFFF"
   spacing: 4
-  layout: "horizontal"   # horizontal / vertical
+  layout: "vertical"   # horizontal / vertical
 
 # ---------- 候选条目 ----------
 candidate_item:

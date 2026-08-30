@@ -10,8 +10,10 @@
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc;
 
-use slint::{Color, SharedString, SharedVector};
+use slint::{Color, PhysicalPosition, SharedString, SharedVector};
+use wbw_ime_ipc::{ToDll, ToGui};
 
 use wbw_ime_gui::{GuiConfig, GuiState, WbwIme};
 
@@ -229,15 +231,85 @@ fn apply_config(ui: &CandidateWindow, config: &GuiConfig) {
     });
 }
 
+/// 将 IPC 下发的 Show 消息应用到窗口并定位到光标屏幕坐标
+fn apply_ipc_show(ui: &CandidateWindow, msg: ToGui) {
+    let ToGui::Show {
+        buffer,
+        candidates,
+        selected,
+        page,
+        total_pages,
+        x,
+        y,
+    } = msg
+    else {
+        return;
+    };
+
+    ui.set_buffer(buffer.as_str().into());
+    let vec: SharedVector<SharedString> =
+        candidates.iter().map(|c| c.as_str().into()).collect();
+    ui.set_candidates((&vec[..]).into());
+    ui.set_selected_index(selected as i32);
+    ui.set_page(page as i32);
+    ui.set_total_pages(total_pages as i32);
+
+    // 窗口左上角定位在光标下方（该坐标为 TSF GetScreenCoords 给出的物理像素）
+    ui.window().set_position(PhysicalPosition::new(x, y + 2));
+    ui.window().show().ok();
+}
+
+/// IPC 模式主入口：监听 DLL，仅显示 + 点击回传，键盘由 DLL 处理。
+fn run_ipc_mode(config: &GuiConfig) {
+    let ui: Rc<CandidateWindow> = CandidateWindow::new().unwrap().into();
+    apply_config(&ui, config);
+    ui.window().hide().ok();
+
+    // 鼠标点击 → 回传 DLL（键盘由 DLL 处理，窗口仅作显示）
+    ui.on_item_clicked(move |idx| wbw_ime_gui::ipc::send(&ToDll::Select(idx as usize)));
+    ui.on_prev_page(move || wbw_ime_gui::ipc::send(&ToDll::PageUp));
+    ui.on_next_page(move || wbw_ime_gui::ipc::send(&ToDll::PageDown));
+
+    // 启动 IPC 服务端，收到 Show/Hide 推入通道
+    let (tx, rx) = mpsc::channel::<ToGui>();
+    wbw_ime_gui::ipc::spawn(tx);
+
+    // UI 线程定时排空通道并应用状态
+    let ui_timer = ui.clone();
+    let timer = slint::Timer::default();
+    timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(10), move || {
+        while let Ok(msg) = rx.try_recv() {
+            match msg {
+                ToGui::Show { .. } => apply_ipc_show(&ui_timer, msg),
+                ToGui::Hide => {
+                    ui_timer.window().hide().ok();
+                }
+            }
+        }
+    });
+
+    // IPC 模式窗口会频繁 show/hide，需让事件循环持续运行直到进程退出，
+    // 避免最后一次窗口隐藏导致事件循环自行结束。
+    slint::run_event_loop_until_quit().unwrap();
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let config_path = args
+    let ipc_mode = args.iter().any(|a| a == "--ipc");
+    let non_flag: Vec<String> = args.iter().filter(|a| *a != "--ipc").cloned().collect();
+    let config_path = non_flag
         .get(1)
         .cloned()
         .unwrap_or_else(|| "resources/gui-config.yaml".to_string());
-    let page_size_arg: Option<usize> = args.get(2).and_then(|s| s.parse().ok());
+    let page_size_arg: Option<usize> = non_flag.get(2).and_then(|s| s.parse().ok());
 
     let config = GuiConfig::from_file(&config_path);
+
+    if ipc_mode {
+        run_ipc_mode(&config);
+        return;
+    }
+
     let page_size = page_size_arg.unwrap_or(config.page_size);
     let engine = WbwIme::new(config.clone(), page_size);
 

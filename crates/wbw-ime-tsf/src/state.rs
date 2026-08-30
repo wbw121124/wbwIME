@@ -10,7 +10,12 @@ pub struct ImeState {
     pub ranker: Ranker,
     pub buffer: String,
     pub composing: bool,
+    /// 当前页候选词（供显示与数字选词）。
     pub candidates: Vec<Candidate>,
+    /// 当前缓冲区完整候选词（供翻页）。
+    pub all_candidates: Vec<Candidate>,
+    pub page: usize,
+    pub page_size: usize,
     pub selected_index: usize,
     pub composing_text: String,
     pub commit_text: Option<String>,
@@ -44,6 +49,9 @@ impl ImeState {
             buffer: String::new(),
             composing: false,
             candidates: Vec::new(),
+            all_candidates: Vec::new(),
+            page: 0,
+            page_size: 10,
             selected_index: 0,
             composing_text: String::new(),
             commit_text: None,
@@ -53,8 +61,10 @@ impl ImeState {
     pub fn update_candidates(&mut self) {
         if self.buffer.is_empty() {
             self.candidates.clear();
+            self.all_candidates.clear();
             self.selected_index = 0;
             self.composing_text.clear();
+            self.page = 0;
             return;
         }
         let ctx = InputContext {
@@ -65,9 +75,68 @@ impl ImeState {
             session_id: 0,
         };
         let matched = self.matcher.match_input(&ctx);
-        self.candidates = self.ranker.rank(matched);
+        let ranked = self.ranker.rank(matched);
+        self.all_candidates = ranked;
+        self.page = 0;
         self.selected_index = 0;
+        self.apply_page();
         self.composing_text = self.buffer.clone();
+    }
+
+    /// 将当前页的候选切片写入 `candidates`，供显示与选词。
+    fn apply_page(&mut self) {
+        let start = self.page * self.page_size;
+        self.candidates = self
+            .all_candidates
+            .iter()
+            .skip(start)
+            .take(self.page_size)
+            .cloned()
+            .collect();
+    }
+
+    pub fn next_page(&mut self) {
+        if self.total_pages() > self.page + 1 {
+            self.page += 1;
+            self.selected_index = 0;
+            self.apply_page();
+        }
+    }
+
+    pub fn prev_page(&mut self) {
+        if self.page > 0 {
+            self.page -= 1;
+            self.selected_index = 0;
+            self.apply_page();
+        }
+    }
+
+    pub fn total_pages(&self) -> usize {
+        if self.all_candidates.is_empty() {
+            1
+        } else {
+            self.all_candidates.len().div_ceil(self.page_size)
+        }
+    }
+
+    /// 对外部点击选词：选中当前页第 `idx` 个候选并置为待上屏。
+    pub fn select_commit(&mut self, idx: usize) {
+        self.commit_text = None;
+        if !self.buffer.is_empty() && idx < self.candidates.len() {
+            self.commit_text = Some(self.candidates[idx].text.clone());
+            self.reset_composing();
+        }
+    }
+
+    /// 清空组合状态（选词/确认共用）。
+    fn reset_composing(&mut self) {
+        self.buffer.clear();
+        self.candidates.clear();
+        self.all_candidates.clear();
+        self.selected_index = 0;
+        self.page = 0;
+        self.composing = false;
+        self.composing_text.clear();
     }
 
     pub fn process_key(&mut self, vkey: u32) {
@@ -77,11 +146,7 @@ impl ImeState {
                 // Enter
                 if !self.buffer.is_empty() && !self.candidates.is_empty() {
                     self.commit_text = Some(self.candidates[self.selected_index].text.clone());
-                    self.buffer.clear();
-                    self.candidates.clear();
-                    self.selected_index = 0;
-                    self.composing = false;
-                    self.composing_text.clear();
+                    self.reset_composing();
                 }
             }
             0x08 => {
@@ -94,42 +159,38 @@ impl ImeState {
             }
             0x1B => {
                 // Escape
-                self.buffer.clear();
-                self.candidates.clear();
-                self.selected_index = 0;
-                self.composing = false;
-                self.composing_text.clear();
+                self.reset_composing();
             }
             0x20 => {
                 // Space -> select first
                 if !self.buffer.is_empty() && !self.candidates.is_empty() {
                     self.commit_text = Some(self.candidates[0].text.clone());
-                    self.buffer.clear();
-                    self.candidates.clear();
-                    self.selected_index = 0;
-                    self.composing = false;
-                    self.composing_text.clear();
+                    self.reset_composing();
+                }
+            }
+            0x21 => {
+                // PageUp
+                if !self.buffer.is_empty() {
+                    self.prev_page();
+                }
+            }
+            0x22 => {
+                // PageDown
+                if !self.buffer.is_empty() {
+                    self.next_page();
                 }
             }
             0x31..=0x39 => {
                 let idx = (vkey - 0x31) as usize;
                 if !self.buffer.is_empty() && idx < self.candidates.len() {
                     self.commit_text = Some(self.candidates[idx].text.clone());
-                    self.buffer.clear();
-                    self.candidates.clear();
-                    self.selected_index = 0;
-                    self.composing = false;
-                    self.composing_text.clear();
+                    self.reset_composing();
                 }
             }
             0x30 => {
                 if !self.buffer.is_empty() && self.candidates.len() > 9 {
                     self.commit_text = Some(self.candidates[9].text.clone());
-                    self.buffer.clear();
-                    self.candidates.clear();
-                    self.selected_index = 0;
-                    self.composing = false;
-                    self.composing_text.clear();
+                    self.reset_composing();
                 }
             }
             0x41..=0x5A => {

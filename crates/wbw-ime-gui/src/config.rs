@@ -9,6 +9,9 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct GuiConfig {
+    /// 预设主题名称：dark / light / dark_plus / light_plus。
+    /// 预设只决定颜色，其它非颜色字段由 YAML/默认值决定。
+    pub theme: String,
     /// 词典（.cin 或 .fst）路径
     pub dict_path: String,
     /// 每页候选词数量
@@ -30,6 +33,7 @@ pub struct GuiConfig {
 impl Default for GuiConfig {
     fn default() -> Self {
         Self {
+            theme: "custom".to_string(),
             dict_path: "resources/dicts/base.cin".to_string(),
             page_size: 10,
             window: WindowConfig::default(),
@@ -264,7 +268,9 @@ impl Default for BehaviorConfig {
 impl GuiConfig {
     /// 从 YAML 字符串解析配置，失败时回退到默认值
     pub fn from_yaml(yaml: &str) -> Self {
-        serde_yaml::from_str(yaml).unwrap_or_default()
+        let mut cfg: Self = serde_yaml::from_str(yaml).unwrap_or_default();
+        cfg.apply_theme(&cfg.theme.clone());
+        cfg
     }
 
     /// 从文件加载配置，失败或文件不存在时回退到默认值
@@ -273,6 +279,67 @@ impl GuiConfig {
             Ok(content) => Self::from_yaml(&content),
             Err(_) => Self::default(),
         }
+    }
+
+    /// 应用预设主题（对颜色类字段覆写）。
+    ///
+    /// 支持的预设：`dark` / `dark_plus` / `light` / `light_plus`（仿 VSCode 配色）。
+    /// 非颜色字段（窗口布局、字号、行为等）不受预设影响，由 YAML / 默认值决定。
+    /// 传入其它值（如空字符串或 `custom`）时不修改任何字段。
+    pub fn apply_theme(&mut self, name: &str) {
+        type ThemePreset = (
+            &'static str,
+            &'static str,
+            &'static str,
+            &'static str,
+            &'static str,
+            &'static str,
+            &'static str,
+            &'static str,
+            &'static str,
+            &'static str,
+            &'static str,
+        );
+
+        // (窗口背景, 边框, 缓冲文本, 缓冲背景, 候选栏背景,
+        //  候选文本, 选中文本, 选中背景, 序号, 图标, 提示)
+        let preset: Option<ThemePreset> = match name {
+                "dark" => Some((
+                    "#1E1E1E", "#454545", "#D4D4D4", "#252526", "#252526", "#CCCCCC", "#FFFFFF",
+                    "#0E639C", "#8A8A8A", "#6E6E6E", "#8A8A8A",
+                )),
+                "dark_plus" => Some((
+                    "#1E1E1E", "#454545", "#D4D4D4", "#252526", "#252526", "#CCCCCC", "#FFFFFF",
+                    "#094771", "#8A8A8A", "#569CD6", "#6E6E6E",
+                )),
+                "light" => Some((
+                    "#FFFFFF", "#C8C8C8", "#333333", "#F3F3F3", "#F3F3F3", "#000000", "#FFFFFF",
+                    "#0066FF", "#606060", "#6E6E6E", "#808080",
+                )),
+                "light_plus" => Some((
+                    "#FFFFFF", "#C8C8C8", "#333333", "#F3F3F3", "#F3F3F3", "#000000", "#FFFFFF",
+                    "#005FB8", "#606060", "#007ACC", "#808080",
+                )),
+                _ => None,
+            };
+
+        let Some((bg, border, buf_text, buf_bg, cand_bg, item_text, sel_text, sel_bg, index, icon, info)) =
+            preset
+        else {
+            return;
+        };
+
+        self.window.background_color = bg.to_string();
+        self.window.border_color = border.to_string();
+        self.buffer_bar.text_color = buf_text.to_string();
+        self.buffer_bar.background_color = buf_bg.to_string();
+        self.candidate_bar.background_color = cand_bg.to_string();
+        self.candidate_item.text_color = item_text.to_string();
+        self.candidate_item.selected_text_color = sel_text.to_string();
+        self.candidate_item.selected_background_color = sel_bg.to_string();
+        self.candidate_item.index_color = index.to_string();
+        self.pagination.icon_color = icon.to_string();
+        self.pagination.info_color = info.to_string();
     }
 }
 
@@ -344,5 +411,45 @@ behavior:
     fn test_from_file_nonexistent_falls_back() {
         let config = GuiConfig::from_file("this/file/does/not/exist.yaml");
         assert_eq!(config.window.font_size, 14);
+    }
+
+    #[test]
+    fn test_theme_dark_preset() {
+        let config = GuiConfig::from_yaml("theme: dark\n");
+        assert_eq!(config.window.background_color, "#1E1E1E");
+        assert_eq!(config.buffer_bar.background_color, "#252526");
+        assert_eq!(config.candidate_bar.background_color, "#252526");
+        assert_eq!(config.candidate_item.selected_background_color, "#0E639C");
+    }
+
+    #[test]
+    fn test_theme_dark_plus_preset() {
+        let config = GuiConfig::from_yaml("theme: dark_plus\n");
+        assert_eq!(config.window.background_color, "#1E1E1E");
+        assert_eq!(config.candidate_item.selected_background_color, "#094771");
+    }
+
+    #[test]
+    fn test_theme_light_preset() {
+        let config = GuiConfig::from_yaml("theme: light\n");
+        assert_eq!(config.window.background_color, "#FFFFFF");
+        assert_eq!(config.candidate_item.text_color, "#000000");
+        assert_eq!(config.candidate_item.selected_background_color, "#0066FF");
+    }
+
+    #[test]
+    fn test_theme_unknown_keeps_default() {
+        let config = GuiConfig::from_yaml("theme: custom\n");
+        assert_eq!(config.window.background_color, "#FFFFFF");
+        assert_eq!(config.candidate_item.selected_background_color, "#0078D4");
+    }
+
+    #[test]
+    fn test_theme_only_overrides_colors() {
+        // 温度：theme 不应修改非颜色字段（如字号、布局、行为）
+        let config = GuiConfig::from_yaml("theme: dark\npage_size: 7\ncandidate_item:\n  font_size: 20\n");
+        assert_eq!(config.page_size, 7);
+        assert_eq!(config.candidate_item.font_size, 20);
+        assert_eq!(config.window.background_color, "#1E1E1E");
     }
 }

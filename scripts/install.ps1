@@ -42,10 +42,14 @@ $cliExe = Join-Path $scriptDir "wbwime.exe"
 # 构建模式：查找 target/release 或 target/debug
 if (-not (Test-Path $tsfDll) -and -not (Test-Path $cliExe)) {
     $targetDir = "$ProjectRoot\target\release"
-    if (-not (Test-Path $targetDir) -or -not ((Test-Path (Join-Path $targetDir "wbw_ime_tsf.dll")) -or (Test-Path (Join-Path $targetDir "wbwime.exe")))) {
+    $releaseOk = (Test-Path $targetDir) -and ((Test-Path (Join-Path $targetDir "wbw_ime_tsf.dll")) -or (Test-Path (Join-Path $targetDir "wbwime.exe")))
+    if (-not $releaseOk) {
         $targetDir = "$ProjectRoot\target\debug"
     }
     Write-Host "  构建目录: $targetDir"
+    if (-not $releaseOk) {
+        Write-Host "  警告: 使用 debug 版 (体积大、速度慢)。建议先运行 cargo build --release" -ForegroundColor DarkYellow
+    }
     $tsfDll = Join-Path $targetDir "wbw_ime_tsf.dll"
     $nativeDll = Join-Path $targetDir "wbw_ime_native.dll"
     $cliExe = Join-Path $targetDir "wbwime.exe"
@@ -77,9 +81,30 @@ Write-Host "  $InstallDir"
 Write-Host "`n[4/6] 复制文件..." -ForegroundColor Yellow
 $filesToCopy = @()
 
+# 若已安装的输入法 DLL 正被系统占用（TSF 加载了它），复制会失败。
+# 尝试移除 COM 注册以释放占用，若仍失败则给出提示。
+function Copy-TsfDll {
+    param([string]$Src, [string]$DstDir)
+    for ($i = 0; $i -lt 3; $i++) {
+        try {
+            Copy-Item $Src $DstDir -Force -ErrorAction Stop
+            return $true
+        } catch {
+            Start-Sleep -Milliseconds 300
+        }
+    }
+    return $false
+}
+
 if (Test-Path $tsfDll) {
-    Copy-Item $tsfDll $InstallDir -Force
-    $filesToCopy += "wbw_ime_tsf.dll"
+    if (Copy-TsfDll $tsfDll $InstallDir) {
+        $filesToCopy += "wbw_ime_tsf.dll"
+    } else {
+        Write-Host "  错误: 无法覆盖 wbw_ime_tsf.dll（正被占用）。" -ForegroundColor Red
+        Write-Host "  请先关闭/移除当前使用的 wbwIME 输入法，然后重试。" -ForegroundColor Red
+        Write-Host "  或在管理员 PowerShell 中执行: regsvr32 /u `"$InstallDir\wbw_ime_tsf.dll`" 后重试。" -ForegroundColor Yellow
+        exit 1
+    }
 }
 if (Test-Path $nativeDll) {
     Copy-Item $nativeDll $InstallDir -Force
@@ -139,12 +164,29 @@ $tsfDllPath = Join-Path $InstallDir "wbw_ime_tsf.dll"
 if (Test-Path $tsfDllPath) {
     # 注册 COM DLL
     Write-Host "  注册 COM 服务器..."
-    $regResult = & regsvr32 /s /i "$tsfDllPath" 2>&1
-    if ($LASTEXITCODE -eq 0) {
+
+    # 校验被注册的 DLL 是有效且非空的文件（避免复制不完整/损坏导致 regsvr32 崩溃）
+    $fileInfo = Get-Item $tsfDllPath
+    if ($fileInfo.Length -eq 0) {
+        Write-Host "  错误: 未发现有效 DLL ($tsfDllPath)" -ForegroundColor Red
+        exit 1
+    }
+
+    $regProc = Start-Process regsvr32.exe -ArgumentList "/s", "`"$tsfDllPath`"" -Wait -PassThru -WindowStyle Hidden
+    $regExit = $regProc.ExitCode
+    if ($regExit -eq 0) {
         Write-Host "  COM 注册成功" -ForegroundColor Green
     } else {
-        Write-Host "  COM 注册失败 (错误码: $LASTEXITCODE)" -ForegroundColor Red
-        Write-Host "  请手动运行: regsvr32 `"$tsfDllPath`""
+        Write-Host "  COM 注册失败 (错误码: $regExit)" -ForegroundColor Red
+        # 0xC000013A = STATUS_CONTROL_C_EXIT：通常是 DLL 加载崩溃（DllMain 加载器锁下的重工作）
+        if (($regExit -band 0xFFFFFFFF) -eq 0xC000013A) {
+            Write-Host "  提示: 0xC000013A 通常是 DLL 加载失败/崩溃。请确认:"
+            Write-Host "    1) DLL 为 64 位且完整复制: Get-Item `"$tsfDllPath`""
+            Write-Host "    2) 使用 release 构建 (cargo build --release)"
+            Write-Host "    3) 手动尝试: regsvr32 `"$tsfDllPath`"（看错误对话框）"
+        } else {
+            Write-Host "  请手动运行: regsvr32 `"$tsfDllPath`""
+        }
     }
 
     # 添加 TSF 语言配置

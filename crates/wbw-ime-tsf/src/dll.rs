@@ -6,6 +6,10 @@ use crate::text_service::{self, TextService};
 
 static DLL_REF_COUNT: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
 
+/// 本 DLL 的模块句柄（由 DllMain 传入），用于获取 DLL 自身路径。
+static DLL_HINST: std::sync::atomic::AtomicPtr<c_void> =
+    std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
 const E_INVALIDARG: HRESULT = -2147024809;
 const E_NOTIMPL: HRESULT = -2147467263;
 const CLASS_E_CLASSNOTAVAILABLE: HRESULT = -2147221231;
@@ -119,30 +123,26 @@ unsafe extern "system" fn cf_lock_server(_this: *mut c_void, _lock: i32) -> HRES
 
 /// # Safety
 /// 由 Windows 调用。
+///
+/// 注意：DllMain 在 Windows 加载器锁下执行，绝不能在此做内存分配、文件 IO、
+/// 锁竞争或初始化引擎（曾导致 regsvr32 以 0xC000013A 崩溃）。输入法状态改为
+/// 在首次按键时经 [`text_service::ensure_state_loaded`] 惰性初始化。
 #[no_mangle]
 pub unsafe extern "system" fn DllMain(
-    _hinst: *mut c_void,
+    hinst: *mut c_void,
     reason: u32,
     _reserved: *mut c_void,
 ) -> i32 {
     match reason {
         1 => {
             DLL_REF_COUNT.store(1, std::sync::atomic::Ordering::SeqCst);
-            let home = std::env::var("USERPROFILE").unwrap_or_default();
-            let dict_path = std::path::PathBuf::from(&home)
-                .join("AppData")
-                .join("Roaming")
-                .join("wbwIME")
-                .join("dict.fst");
-            if dict_path.exists() {
-                if let Some(state) = crate::state::ImeState::new(&dict_path.to_string_lossy()) {
-                    *text_service::IME_STATE.lock().unwrap() = Some(state);
-                }
-            }
+            DLL_HINST.store(hinst, std::sync::atomic::Ordering::SeqCst);
         }
         0 => {
             DLL_REF_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
-            *text_service::IME_STATE.lock().unwrap() = None;
+            if let Ok(mut guard) = text_service::IME_STATE.lock() {
+                *guard = None;
+            }
         }
         _ => {}
     }
@@ -196,13 +196,23 @@ pub unsafe extern "system" fn DllRegisterServer() -> HRESULT {
     let dll_path_str = dll_path.to_string_lossy();
 
     let clsid = "E8A3B0F2-1234-5678-9ABC-DEF012345678";
-    let _ = set_reg(&format!("CLSID\\{{{}}}", clsid), "", "wbwIME");
+    // COM 类注册的 CLSID 必须位于 SOFTWARE\Classes\CLSID（HKLM\CLSID 字面根不会被
+    // COM/TSF 查找）。Tip 键则位于 SOFTWARE\Microsoft\CTF\TIP。
     let _ = set_reg(
-        &format!("CLSID\\{{{}}}\\InprocServer32", clsid),
+        &format!("SOFTWARE\\Classes\\CLSID\\{{{}}}", clsid),
+        "",
+        "wbwIME",
+    );
+    let _ = set_reg(
+        &format!("SOFTWARE\\Classes\\CLSID\\{{{}}}\\InprocServer32", clsid),
         "",
         &dll_path_str,
     );
-    let _ = set_reg(&format!("CLSID\\{{{}}}", clsid), "ThreadModel", "Both");
+    let _ = set_reg(
+        &format!("SOFTWARE\\Classes\\CLSID\\{{{}}}", clsid),
+        "ThreadModel",
+        "Both",
+    );
 
     let tip_key = format!("SOFTWARE\\Microsoft\\CTF\\TIP\\{{{}}}", clsid);
     let _ = set_reg(&tip_key, "Description", "wbwIME Pinyin Input");
@@ -227,7 +237,7 @@ pub unsafe extern "system" fn DllRegisterServer() -> HRESULT {
 #[no_mangle]
 pub unsafe extern "system" fn DllUnregisterServer() -> HRESULT {
     let clsid = "E8A3B0F2-1234-5678-9ABC-DEF012345678";
-    let _ = del_reg(&format!("CLSID\\{{{}}}", clsid));
+    let _ = del_reg(&format!("SOFTWARE\\Classes\\CLSID\\{{{}}}", clsid));
     let _ = del_reg(&format!("SOFTWARE\\Microsoft\\CTF\\TIP\\{{{}}}", clsid));
     let _ = del_reg("SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\E0200804");
     S_OK
@@ -236,10 +246,15 @@ pub unsafe extern "system" fn DllUnregisterServer() -> HRESULT {
 // ========== 辅助函数 ==========
 
 fn get_dll_path() -> std::path::PathBuf {
+    // 必须用本 DLL 的模块句柄（而非 NULL，NULL 返回的是宿主进程 exe，例如 regsvr32.exe）。
+    let hmod = DLL_HINST.load(std::sync::atomic::Ordering::SeqCst);
+    if hmod.is_null() {
+        return std::path::PathBuf::new();
+    }
     unsafe {
         let mut buf = [0u16; 260];
         let len = windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW(
-            std::ptr::null_mut(),
+            hmod as _,
             buf.as_mut_ptr(),
             260,
         );

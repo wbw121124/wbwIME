@@ -12,9 +12,39 @@
   - `output.rs`：`tsf_insert_text`/`tsf_start_composition`/`tsf_update_composition` 改为 `unsafe fn` 并补 `# Safety`（`not_unsafe_ptr_arg_deref`）
   - `text_service.rs`：`advise_key_sink`/`unadvise_key_sink` 补 `# Safety`（`missing_safety_doc`）
   - `output.rs`：`#![allow(clippy::missing_const_for_thread_local)]`（x86_64-pc-windows-gnu 目标上的已知误报，rust-clippy#13422）
+- install.ps1 COM 注册修复：`regsvr32 /s /i` → `regsvr32 /s`（/i 会调用未导出的 DllInstall 导致注册失败），已本地验证返回 0
+- wbw-ime-gui — **Slint** 候选窗口（见下方计划）：引擎/config 已完成并通过 CI（纯 Rust，无 Qt 可编译测试）；已用 Slint 原生 Rust 重写 UI，去掉 Qt/qmetaobject 依赖，SVG 图标/翻页位置/多字体/翻页键等均可配置
+- **候选窗口 GUI + TSF 集成（IPC）** — 新增 `wbw-ime-ipc` 共享 crate + GUI `--ipc` 服务端模式 + TSF 客户端模式，见下方「候选窗口 IPC 集成」计划。
 
 ### 进行中
-- wbw-ime-gui — **Slint** 候选窗口（见下方计划）：引擎/config 已完成并通过 CI（纯 Rust，无 Qt 可编译测试）；已用 Slint 原生 Rust 重写 UI，去掉 Qt/qmetaobject 依赖，SVG 图标/翻页位置/多字体/翻页键等均可配置
+- TSF 与候选窗口 IPC 的**实机验证**：光标跟随、点击选词/翻页链路需在有真实 TSF 会话的目标应用（如 VSCode）中验证。
+
+### 完成（崩溃修复）
+- `output.rs` 所有手写 vtable 索引按权威 msctf.idl 核对并修正：
+  - `get_context`：`GetFocus(7)` + `GetTop(6)`（原来误用 SetFocus(8)/Push(4)）。
+  - `get_caret_screen_coords`：改为在 **同步只读 edit session**（`RequestEditSession`，`ITfEditSession::DoEditSession(ec)` 内用合法 cookie）里 `GetSelection(5)` + `GetActiveView(9)` + `ITfContextView::GetTextExt(4)` 取选区屏幕坐标；任何步骤失败都返回 `None` 走兜底，绝不崩宿主。
+  - `tsf_insert_text` → `insert_text_at_caret`：改为在**同步写 edit session**（`TF_ES_SYNC|READ|WRITE`）里 `ITfInsertAtSelection::InsertTextAtSelection(ec,…)` 插入，失败回退剪贴板。
+  - 移除死亡组合路径（`tsf_start_composition`/`tsf_update_composition`，含 `StartComposition` 的参数错位 crash 炸弹），保留 `tsf_end_composition` 为安全 no-op。
+  - `text_service.rs`：新增 `THREAD_MGR`/`CLIENT_ID` 全局，`ts_activate` 记录之（RequestEditSession 需要 TfClientId）。
+
+## 候选窗口 IPC 集成
+
+### 架构（已与用户确认）
+- **独立 GUI 进程 + localhost TCP**：TSF DLL（被注入目标进程）作为客户端，独立 `wbw-ime-gui --ipc` 进程作为服务端。
+- **键盘仍在 DLL**：数字选词/空格/翻页键由 TSF 的 `ImeState` 处理；GUI 窗口只负责**显示 + 鼠标点击**，无焦点、置顶、跟随输入光标。
+- 新增共享 crate `wbw-ime-ipc`：
+  - `ToGui::{Show{buffer,candidates,selected,page,total_pages,x,y}, Hide}`（DLL→GUI）
+  - `ToDll::{Select(usize), PageUp, PageDown}`（GUI→DLL）
+  - 帧格式：`[4 字节小端长度][JSON]`，`frame::read/write`；`PORT=45123`。
+- GUI 侧 `--ipc` 模式：`ipc::spawn` 监听 TCP，收到 Show 定位到光标坐标(x,y) 下方并按候选更新窗口、Hide 隐藏；`on_item_clicked/prev/next` 回传 `ToDll`。事件循环用 `run_event_loop_until_quit`（避免窗口 hide 后循环自行结束）。
+- TSF 侧 `ipc.rs`：`ensure_connected` 负责首次启动 `wbw-ime-gui.exe --ipc`（与 DLL 同目录）+ 连接；`ks_key_down` 处理后调 `refresh_gui()` 发 Show/Hide；后台线程读 `ToDll`，`Select` 走 `state.select_commit` + 剪贴板上屏，翻页更新 `state` 后回发 Show。
+- `state.rs` 扩展：增加 `all_candidates`/`page`/`page_size`，翻页（PageUp/PageDown 0x21/0x22）、`select_commit(idx)`、`total_pages()`。
+- `output.rs` 增加 `get_caret_screen_coords`：在同步只读 edit session（合法 cookie）里 `GetSelection` → `GetActiveView` → `ITfContextView::GetTextExt` 取选区屏幕坐标（尽力而为，失败兜底右下角，坐标不可得不影响关键路径）。
+
+### 已知限制（IPC 版）
+- **光标跟随为尽力而为**：同步只读 edit session 可能在目标已持锁（如打字中）时被拒（TF_E_LOCKED），此时窗口显示在右下角兜底位置。
+- 点击选词上屏在主线程直接走 TSF 写会话；若会话不可用则回退**剪贴板**（线程安全、不修复）。
+- 多实例/端口冲突：`PORT` 固定，多 TSF 实例共用同一 GUI 连接（当前仅维护一条连接，够日常使用）。
 
 ## 参考项目研究
 

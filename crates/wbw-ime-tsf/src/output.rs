@@ -8,94 +8,33 @@ pub type ULONG = u32;
 
 pub const S_OK: HRESULT = 0;
 
-// ========== Composition state ==========
-
-struct CompositionState {
-    context: *mut c_void,
-    composition: *mut c_void,
-    range: *mut c_void,
-}
-
-thread_local! {
-    static COMPOSITION: std::cell::RefCell<Option<CompositionState>> = const { std::cell::RefCell::new(None) };
-}
-
-// ========== ITfCompositionSink ==========
-unsafe extern "system" fn comp_sink_qi(
-    _this: *mut c_void,
-    riid: *const Guid,
-    ppv: *mut *mut c_void,
-) -> HRESULT {
-    if ppv.is_null() {
-        return -2147024809;
-    }
-    let iid = unsafe { &*riid };
-    if *iid == IID_IUNKNOWN {
-        unsafe {
-            *ppv = _this;
-            comp_sink_add_ref(_this);
-        }
-        return S_OK;
-    }
-    unsafe {
-        *ppv = std::ptr::null_mut();
-    }
-    -2147467263
-}
-
-unsafe extern "system" fn comp_sink_add_ref(_this: *mut c_void) -> ULONG {
-    1
-}
-
-unsafe extern "system" fn comp_sink_release(_this: *mut c_void) -> ULONG {
-    0
-}
-
-// ITfCompositionSink::OnCompositionTerminated
-unsafe extern "system" fn comp_sink_on_terminated(
-    _this: *mut c_void,
-    _edit_cookie: u64,
-    _composition: *mut c_void,
-) -> HRESULT {
-    COMPOSITION.with(|c| {
-        *c.borrow_mut() = None;
-    });
-    S_OK
-}
-
+/// 屏幕坐标矩形（与 Win32 `RECT` 布局一致）。
 #[repr(C)]
-pub struct CompositionSinkVtable {
-    pub query_interface:
-        unsafe extern "system" fn(*mut c_void, *const Guid, *mut *mut c_void) -> i32,
-    pub add_ref: unsafe extern "system" fn(*mut c_void) -> u32, // 假设是这个
-    pub release: unsafe extern "system" fn(*mut c_void) -> u32, // 假设是这个
-    pub on_terminated: unsafe extern "system" fn(*mut c_void, u64, *mut c_void) -> i32, // ✅ 修正
+struct RECT {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
 }
-
-// ✅ 每个函数都有正确的签名
-static COMPOSITION_SINK_VTABLE: CompositionSinkVtable = CompositionSinkVtable {
-    query_interface: comp_sink_qi,
-    add_ref: comp_sink_add_ref,
-    release: comp_sink_release,
-    on_terminated: comp_sink_on_terminated,
-};
 
 // ========== Helper: get context from thread_mgr ==========
 
 unsafe fn get_context(thread_mgr: *mut c_void) -> Option<*mut c_void> {
+    // 权威链路（msctf.idl）：ITfThreadMgr::GetFocus(=7) -> ITfDocumentMgr，
+    // ITfDocumentMgr::GetTop(=6) -> ITfContext。
     let tm_vtable = *(thread_mgr as *const *const usize);
-    let get_active_fn: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> HRESULT =
-        std::mem::transmute(*tm_vtable.add(8));
+    let get_focus_fn: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> HRESULT =
+        std::mem::transmute(*tm_vtable.add(7));
     let mut doc_mgr: *mut c_void = std::ptr::null_mut();
-    if get_active_fn(thread_mgr, &mut doc_mgr) != S_OK || doc_mgr.is_null() {
+    if get_focus_fn(thread_mgr, &mut doc_mgr) != S_OK || doc_mgr.is_null() {
         return None;
     }
 
     let dm_vtable = *(doc_mgr as *const *const usize);
-    let get_active_fn: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> HRESULT =
-        std::mem::transmute(*dm_vtable.add(4));
+    let get_top_fn: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> HRESULT =
+        std::mem::transmute(*dm_vtable.add(6));
     let mut context: *mut c_void = std::ptr::null_mut();
-    let hr = get_active_fn(doc_mgr, &mut context);
+    let hr = get_top_fn(doc_mgr, &mut context);
     {
         let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
             std::mem::transmute(*dm_vtable.add(2));
@@ -127,6 +66,314 @@ unsafe fn qi(obj: *mut c_void, iid: &Guid) -> Option<*mut c_void> {
         Some(result)
     } else {
         None
+    }
+}
+
+/// `TF_SELECTION` —— `ITfContext::GetSelection` 的输出结构。
+/// 这里只关心 range 指针（首个字段），其余由调用方保留。
+#[repr(C)]
+struct TSF_SELECTION {
+    range: *mut c_void,
+    style: u64,
+}
+
+const TF_DEFAULT_SELECTION: u32 = u32::MAX;
+const TF_ES_SYNC: u32 = 0x0000_0002;
+const TF_ES_READ: u32 = 0x0000_0004;
+const TF_ES_WRITE: u32 = 0x0000_0008;
+
+// 同步会话里备用的活动上下文指针（由 `get_caret_screen_coords` 在发请求前写入）。
+thread_local! {
+    static SESSION_CTX: std::cell::Cell<*mut c_void> = const { std::cell::Cell::new(std::ptr::null_mut()) };
+    static CARET_OUT: std::cell::Cell<Option<(i32, i32)>> = const { std::cell::Cell::new(None) };
+    static SESSION_JOB: std::cell::RefCell<Option<SessionJob>> = const { std::cell::RefCell::new(None) };
+    static INSERT_OUT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+enum SessionJob {
+    Caret,
+    Insert { wide: Vec<u16> },
+}
+
+// ===== ITfEditSession sink（接收同步会话回调，读取光标屏幕坐标） =====
+unsafe extern "system" fn es_qi(
+    _this: *mut c_void,
+    riid: *const Guid,
+    ppv: *mut *mut c_void,
+) -> HRESULT {
+    if ppv.is_null() {
+        return -2147024809;
+    }
+    let iid = unsafe { &*riid };
+    if *iid == IID_IUNKNOWN {
+        unsafe {
+            *ppv = _this;
+        }
+        return S_OK;
+    }
+    unsafe {
+        *ppv = std::ptr::null_mut();
+    }
+    -2147467263
+}
+
+unsafe extern "system" fn es_add_ref(_this: *mut c_void) -> ULONG {
+    1
+}
+
+unsafe extern "system" fn es_release(_this: *mut c_void) -> ULONG {
+    0
+}
+
+/// `ITfEditSession::DoEditSession(ec)` —— 在同步会话里用合法 cookie 执行请求的任务。
+unsafe extern "system" fn es_do_edit_session(_this: *mut c_void, ec: u32) -> HRESULT {
+    let context = SESSION_CTX.with(|c| c.get());
+    if context.is_null() {
+        return S_OK;
+    }
+
+    let job = SESSION_JOB.with(|j| j.borrow_mut().take());
+    match job {
+        Some(SessionJob::Caret) => {
+            es_do_caret(context, ec);
+        }
+        Some(SessionJob::Insert { wide }) => {
+            es_do_insert(context, ec, wide);
+        }
+        None => {}
+    }
+
+    S_OK
+}
+
+/// 在只读会话里用合法 cookie 取插入光标屏幕坐标。
+unsafe fn es_do_caret(context: *mut c_void, ec: u32) {
+    unsafe {
+        let ctx_vtable = *(context as *const *const usize);
+        // ITfContext::GetSelection (index 5): (ec, ulIndex, pSelection, pcFetched)
+        let get_sel_fn: unsafe extern "system" fn(
+            *mut c_void,
+            u32,
+            u32,
+            *mut TSF_SELECTION,
+            *mut u32,
+        ) -> HRESULT = std::mem::transmute(*ctx_vtable.add(5));
+
+        let mut selection: TSF_SELECTION =
+            TSF_SELECTION { range: std::ptr::null_mut(), style: 0 };
+        let mut fetched: u32 = 0;
+        let hr = get_sel_fn(
+            context,
+            ec,
+            TF_DEFAULT_SELECTION,
+            &mut selection,
+            &mut fetched,
+        );
+        if hr != S_OK || fetched == 0 || selection.range.is_null() {
+            return;
+        }
+
+        let range = selection.range;
+
+        // ITfContext::GetActiveView (index 9): (pView)
+        let get_view_fn: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> HRESULT =
+            std::mem::transmute(*ctx_vtable.add(9));
+        let mut view: *mut c_void = std::ptr::null_mut();
+        if get_view_fn(context, &mut view) == S_OK && !view.is_null() {
+            let view_vtable = *(view as *const *const usize);
+            // ITfContextView::GetTextExt (index 4): (ec, pRange, prc, pfClipped)
+            let get_ext_fn: unsafe extern "system" fn(
+                *mut c_void,
+                u32,
+                *mut c_void,
+                *mut RECT,
+                *mut i32,
+            ) -> HRESULT = std::mem::transmute(*view_vtable.add(4));
+
+            let mut rect = RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            };
+            let mut clipped: i32 = 0;
+            let hr2 = get_ext_fn(view, ec, range, &mut rect, &mut clipped);
+            if hr2 == S_OK {
+                // 选区的起始点（插入光标）作为候选窗锚点。
+                let (mut x, mut y) = (rect.left, rect.top);
+                if x == 0 && y == 0 {
+                    // 零宽选区有时返回 0 坐标，此时用视口右下近似。
+                    x = rect.right;
+                    y = rect.bottom;
+                }
+                CARET_OUT.with(|c| c.set(Some((x, y))));
+            }
+            release_obj(view);
+        }
+
+        release_obj(range);
+    }
+}
+
+/// 在写会话里用合法 cookie 把文本插入到当前选区。
+unsafe fn es_do_insert(context: *mut c_void, ec: u32, wide: Vec<u16>) {
+    unsafe {
+        let insert_sel = match qi(context, &IID_ITF_INSERT_AT_SELECTION) {
+            Some(p) => p,
+            None => {
+                INSERT_OUT.with(|o| o.set(false));
+                return;
+            }
+        };
+
+        let insert_vtable = *(insert_sel as *const *const usize);
+        // ITfInsertAtSelection::InsertTextAtSelection (index 3):
+        //   (ec, dwFlags, pchText, cch, pchInserted)
+        let insert_fn: unsafe extern "system" fn(
+            *mut c_void,
+            u32,
+            u32,
+            *const u16,
+            u32,
+            *mut u32,
+        ) -> HRESULT = std::mem::transmute(*insert_vtable.add(3));
+
+        let mut written: u32 = 0;
+        let hr = insert_fn(insert_sel, ec, 0, wide.as_ptr(), wide.len() as u32, &mut written);
+
+        release_obj(insert_sel);
+        INSERT_OUT.with(|o| o.set(hr == S_OK));
+    }
+}
+
+#[repr(C)]
+struct EditSessionVtable {
+    query_interface: unsafe extern "system" fn(*mut c_void, *const Guid, *mut *mut c_void) -> i32,
+    add_ref: unsafe extern "system" fn(*mut c_void) -> u32,
+    release: unsafe extern "system" fn(*mut c_void) -> u32,
+    do_edit_session: unsafe extern "system" fn(*mut c_void, u32) -> i32,
+}
+
+static EDIT_SESSION_VTABLE: EditSessionVtable = EditSessionVtable {
+    query_interface: es_qi,
+    add_ref: es_add_ref,
+    release: es_release,
+    do_edit_session: es_do_edit_session,
+};
+
+/// 通过活动上下文取得插入光标（选区）的屏幕坐标。
+///
+/// 读取链路（权威 msctf.idl）：
+/// `ITfThreadMgr::GetFocus(7)` → `ITfDocumentMgr::GetTop(6)` → `ITfContext`，
+/// 再发起一个同步只读 edit session，在 `ITfEditSession::DoEditSession(ec)` 里用
+/// 合法 cookie 调用 `ITfContext::GetSelection(5)` + `ITfContext::GetActiveView(9)`
+/// + `ITfContextView::GetTextExt(4)` 得到选区矩形。
+///
+/// 所有步骤都检查返回值/空指针，任何一步失败都返回 `None`，由调用方回退，
+/// 绝不让宿主进程崩溃。若同步会话被拒绝（返回非 S_OK），也走回退。
+///
+/// # Safety
+///
+/// `thread_mgr` 必须是指向有效 `ITfThreadMgr` 的指针。
+pub unsafe fn get_caret_screen_coords(thread_mgr: *mut c_void) -> Option<(i32, i32)> {
+    unsafe {
+        let client_id = crate::text_service::CLIENT_ID.load(std::sync::atomic::Ordering::SeqCst);
+        if client_id == 0 {
+            return None;
+        }
+
+        let context = get_context(thread_mgr)?;
+
+        SESSION_CTX.with(|c| c.set(context));
+        CARET_OUT.with(|c| c.set(None));
+        SESSION_JOB.with(|j| *j.borrow_mut() = Some(SessionJob::Caret));
+
+        let ctx_vtable = *(context as *const *const usize);
+        // ITfContext::RequestEditSession (index 3): (tid, pES, dwFlags, phrSession)
+        let req_fn: unsafe extern "system" fn(
+            *mut c_void,
+            u32,
+            *mut c_void,
+            u32,
+            *mut i32,
+        ) -> HRESULT = std::mem::transmute(*ctx_vtable.add(3));
+
+        let sink = &EDIT_SESSION_VTABLE as *const _ as *mut c_void;
+        let mut hr_session: i32 = 0;
+        let hr = req_fn(
+            context,
+            client_id,
+            sink,
+            TF_ES_SYNC | TF_ES_READ,
+            &mut hr_session,
+        );
+
+        SESSION_CTX.with(|c| c.set(std::ptr::null_mut()));
+        SESSION_JOB.with(|j| *j.borrow_mut() = None);
+        release_obj(context);
+
+        if hr != S_OK || hr_session != S_OK {
+            return None;
+        }
+
+        CARET_OUT.with(|c| c.get())
+    }
+}
+
+/// 在活动上下文中发起同步写会话，执行一个插入任务（用合法 cookie）。
+///
+/// 返回是否成功执行。任何失败都返回 `false`，由调用方回退剪贴板，不崩溃。
+///
+/// # Safety
+///
+/// `thread_mgr` 必须是指向有效 `ITfThreadMgr` 的指针，或为 null（返回 `false`）。
+pub unsafe fn insert_text_at_caret(thread_mgr: *mut c_void, text: &str) -> bool {
+    unsafe {
+        let client_id = crate::text_service::CLIENT_ID.load(std::sync::atomic::Ordering::SeqCst);
+        if client_id == 0 || text.is_empty() {
+            return false;
+        }
+
+        let context = match get_context(thread_mgr) {
+            Some(c) => c,
+            None => return false,
+        };
+
+        let wide: Vec<u16> = text.encode_utf16().collect();
+
+        SESSION_CTX.with(|c| c.set(context));
+        INSERT_OUT.with(|o| o.set(false));
+        SESSION_JOB.with(|j| *j.borrow_mut() = Some(SessionJob::Insert { wide }));
+
+        let ctx_vtable = *(context as *const *const usize);
+        // ITfContext::RequestEditSession (index 3): (tid, pES, dwFlags, phrSession)
+        let req_fn: unsafe extern "system" fn(
+            *mut c_void,
+            u32,
+            *mut c_void,
+            u32,
+            *mut i32,
+        ) -> HRESULT = std::mem::transmute(*ctx_vtable.add(3));
+
+        let sink = &EDIT_SESSION_VTABLE as *const _ as *mut c_void;
+        let mut hr_session: i32 = 0;
+        let hr = req_fn(
+            context,
+            client_id,
+            sink,
+            TF_ES_SYNC | TF_ES_READ | TF_ES_WRITE,
+            &mut hr_session,
+        );
+
+        SESSION_CTX.with(|c| c.set(std::ptr::null_mut()));
+        SESSION_JOB.with(|j| *j.borrow_mut() = None);
+        release_obj(context);
+
+        if hr != S_OK || hr_session != S_OK {
+            return false;
+        }
+
+        INSERT_OUT.with(|o| o.get())
     }
 }
 
@@ -200,191 +447,17 @@ pub unsafe fn tsf_insert_text(thread_mgr: *mut c_void, _client_id: u32, text: &s
         return;
     }
 
-    // End any active composition first
+    // End any active composition first（当前组合路径未激活，防御性清理）
     tsf_end_composition(thread_mgr);
 
-    let wide: Vec<u16> = text.encode_utf16().collect();
-
-    unsafe {
-        let context = match get_context(thread_mgr) {
-            Some(c) => c,
-            None => {
-                clipboard_paste(text);
-                return;
-            }
-        };
-
-        let insert_sel = match qi(context, &IID_ITF_INSERT_AT_SELECTION) {
-            Some(p) => p,
-            None => {
-                release_obj(context);
-                clipboard_paste(text);
-                return;
-            }
-        };
-
-        let insert_vtable = *(insert_sel as *const *const usize);
-        let insert_fn: unsafe extern "system" fn(
-            *mut c_void,
-            u32,
-            *const u16,
-            u32,
-            *mut u32,
-        ) -> HRESULT = std::mem::transmute(*insert_vtable.add(3));
-        let mut written: u32 = 0;
-        let hr = insert_fn(
-            insert_sel,
-            0,
-            wide.as_ptr(),
-            wide.len() as u32,
-            &mut written,
-        );
-
-        release_obj(insert_sel);
-        release_obj(context);
-
-        if hr != S_OK {
-            clipboard_paste(text);
-        }
+    // 在主写的 edit session（合法 cookie）里插入；失败则回退剪贴板
+    if !insert_text_at_caret(thread_mgr, text) {
+        clipboard_paste(text);
     }
 }
 
-/// Starts a TSF composition tied to the active context.
-///
-/// # Safety
-///
-/// `thread_mgr` must be a valid pointer to an active `ITfThreadMgr`, or null.
-/// The pointer must remain valid for the call.
-pub unsafe fn tsf_start_composition(thread_mgr: *mut c_void) {
-    if thread_mgr.is_null() {
-        return;
-    }
-
-    // Already composing?
-    let already = COMPOSITION.with(|c| c.borrow().is_some());
-    if already {
-        return;
-    }
-
-    unsafe {
-        let context = match get_context(thread_mgr) {
-            Some(c) => c,
-            None => return,
-        };
-
-        let comp_ctx = match qi(context, &IID_ITF_CONTEXT_COMPOSITION) {
-            Some(p) => p,
-            None => {
-                release_obj(context);
-                return;
-            }
-        };
-
-        // Create a static vtable pointer for our composition sink
-        let sink = &COMPOSITION_SINK_VTABLE as *const _ as *mut c_void;
-
-        // ITfContextComposition::StartComposition (index 3)
-        let vtable = *(comp_ctx as *const *const usize);
-        let start_fn: unsafe extern "system" fn(
-            *mut c_void,
-            u64,
-            *mut c_void,
-            *mut *mut c_void,
-        ) -> HRESULT = std::mem::transmute(*vtable.add(3));
-        let mut composition: *mut c_void = std::ptr::null_mut();
-        let hr = start_fn(comp_ctx, 0, sink, &mut composition);
-
-        release_obj(comp_ctx);
-
-        if hr == S_OK && !composition.is_null() {
-            // Get the range from the composition
-            let comp_vtable = *(composition as *const *const usize);
-            let get_range_fn: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> HRESULT =
-                std::mem::transmute(*comp_vtable.add(3));
-            let mut range: *mut c_void = std::ptr::null_mut();
-            let hr = get_range_fn(composition, &mut range);
-
-            if hr == S_OK && !range.is_null() {
-                COMPOSITION.with(|c| {
-                    *c.borrow_mut() = Some(CompositionState {
-                        context,
-                        composition,
-                        range,
-                    });
-                });
-            } else {
-                // End composition if we can't get range
-                let end_fn: unsafe extern "system" fn(*mut c_void, u64) -> HRESULT =
-                    std::mem::transmute(*comp_vtable.add(6));
-                end_fn(composition, 0);
-                release_obj(composition);
-                release_obj(context);
-            }
-        } else {
-            release_obj(context);
-        }
-    }
-}
-
-/// Updates the visible composition text.
-///
-/// # Safety
-///
-/// `thread_mgr` must be a valid pointer to an active `ITfThreadMgr`, or null.
-/// The pointer must remain valid for the call.
-pub unsafe fn tsf_update_composition(thread_mgr: *mut c_void, text: &str) {
-    if thread_mgr.is_null() || text.is_empty() {
-        return;
-    }
-
-    // Start composition if not already
-    let has_comp = COMPOSITION.with(|c| c.borrow().is_some());
-    if !has_comp {
-        tsf_start_composition(thread_mgr);
-    }
-
-    COMPOSITION.with(|c| {
-        let borrowed = c.borrow();
-        let state = match borrowed.as_ref() {
-            Some(s) => s,
-            None => return,
-        };
-        let range = state.range;
-        if range.is_null() {
-            return;
-        }
-
-        let wide: Vec<u16> = text.encode_utf16().collect();
-
-        unsafe {
-            let vtable = *(range as *const *const usize);
-            // ITfRange::SetText (index 4)
-            let set_text_fn: unsafe extern "system" fn(
-                *mut c_void,
-                u64,
-                *const u16,
-                u32,
-            ) -> HRESULT = std::mem::transmute(*vtable.add(4));
-            set_text_fn(range, 0, wide.as_ptr(), wide.len() as u32);
-        }
-    });
-}
-
-pub fn tsf_end_composition(thread_mgr: *mut c_void) {
-    let state = COMPOSITION.with(|c| c.borrow_mut().take());
-    if let Some(state) = state {
-        unsafe {
-            if !state.composition.is_null() {
-                let vtable = *(state.composition as *const *const usize);
-                // ITfComposition::EndComposition (index 6)
-                let end_fn: unsafe extern "system" fn(*mut c_void, u64) -> HRESULT =
-                    std::mem::transmute(*vtable.add(6));
-                end_fn(state.composition, 0);
-                release_obj(state.composition);
-            }
-            release_obj(state.range);
-            release_obj(state.context);
-        }
-    }
-    let _ = thread_mgr;
+/// 结束组合（当前组合路径未启用，保留为一个安全的 no-op）。
+pub fn tsf_end_composition(_thread_mgr: *mut c_void) {
+    // 组合（ITfComposition）路径当前未接入热路径；提交统一走
+    // insert_text_at_caret / tsf_insert_text，因此这里无需真实结束操作。
 }
