@@ -43,24 +43,20 @@ pub const IID_ITF_THREAD_MGR_EX: Guid = Guid {
     data3: 0x4CB0,
     data4: [0xBB, 0x58, 0x69, 0x62, 0x8F, 0x5F, 0x45, 0x8C],
 };
-// �û���ɼ�ĵװ�/Ǳ�ڵ� ThreadMgr ���ж�ͨ���飬��̽�⡣
-pub const IID_UNKNOWN_6E4E2102: Guid = Guid {
-    data1: 0x6E4E2102,
-    data2: 0xF9CD,
-    data3: 0x433D,
-    data4: [0xB4, 0x96, 0x30, 0x3C, 0xE0, 0x3A, 0x65, 0x07],
-};
 pub const IID_ITF_KEY_STROKE_MGR: Guid = Guid {
     data1: 0xAA80E902,
     data2: 0x2021,
     data3: 0x11D2,
     data4: [0x93, 0xE0, 0x00, 0x60, 0xB0, 0x67, 0xB8, 0x6E],
 };
+// ITfTextInputProcessorEx 的 IID 是 6E4E2102-F9CD-433D-B496-303CE03A6507
+// （msctf.idl / msctf.h 确认）。Win11 新式应用（TextInputHost）优先用此接口
+// 激活；若 IID 错误则宿主降级到非Ex 路径，punk 不是标准 ITfThreadMgr。
 pub const IID_ITF_TEXT_INPUT_PROCESSOR_EX: Guid = Guid {
-    data1: 0x86462810,
-    data2: 0x5174,
-    data3: 0x11D4,
-    data4: [0xB6, 0x3F, 0x83, 0x63, 0xED, 0x0B, 0x40, 0x71],
+    data1: 0x6E4E2102,
+    data2: 0xF9CD,
+    data3: 0x433D,
+    data4: [0xB4, 0x96, 0x30, 0x3C, 0xE0, 0x3A, 0x65, 0x07],
 };
 pub const IID_ITF_TEXT_INPUT_PROCESSOR: Guid = Guid {
     data1: 0xAA80E7F7,

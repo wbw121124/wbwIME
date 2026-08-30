@@ -319,7 +319,6 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
             IID_ITF_THREAD_MGR,
             IID_ITF_THREAD_MGR2,
             IID_ITF_THREAD_MGR_EX,
-            IID_UNKNOWN_6E4E2102,
         ];
         for cand in &candidates {
             let mut out: *mut c_void = std::ptr::null_mut();
