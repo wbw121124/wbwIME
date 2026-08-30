@@ -155,6 +155,13 @@ if (Test-Path $headerSrc) {
     $filesToCopy += "include\wbw_ime_native.h"
 }
 
+# 复制图标（TSF 输入法在"设置"里显示的图标，DllRegisterServer 会把它写进 IconFile）
+$iconSrc = Join-Path $ProjectRoot "resources\wbwime.ico"
+if (Test-Path $iconSrc) {
+    Copy-Item $iconSrc (Join-Path $InstallDir "wbwime.ico") -Force
+    $filesToCopy += "wbwime.ico（输入法图标）"
+}
+
 Write-Host "  已复制 $($filesToCopy.Count) 个项目" -ForegroundColor Green
 
 # ---------- 5. 注册 TSF 输入法 ----------
@@ -176,6 +183,7 @@ if (Test-Path $tsfDllPath) {
     $regExit = $regProc.ExitCode
     if ($regExit -eq 0) {
         Write-Host "  COM 注册成功" -ForegroundColor Green
+        Write-Host "  TSF 配置已由 DllRegisterServer 完整写入" -ForegroundColor Green
     } else {
         Write-Host "  COM 注册失败 (错误码: $regExit)" -ForegroundColor Red
         # 0xC000013A = STATUS_CONTROL_C_EXIT：通常是 DLL 加载崩溃（DllMain 加载器锁下的重工作）
@@ -187,34 +195,8 @@ if (Test-Path $tsfDllPath) {
         } else {
             Write-Host "  请手动运行: regsvr32 `"$tsfDllPath`""
         }
+        exit 1
     }
-
-    # 添加 TSF 语言配置
-    $clsid = "{E8A3B0F2-1234-5678-9ABC-DEF012345678}"
-    $tipKey = "HKLM:\SOFTWARE\Microsoft\CTF\TIP\$clsid"
-
-    if (-not (Test-Path $tipKey)) {
-        New-Item -Path $tipKey -Force | Out-Null
-    }
-    Set-ItemProperty -Path $tipKey -Name "Description" -Value "wbwIME" -Force
-
-    $langProfileKey = "$tipKey\LanguageProfile\0x00000804\$clsid"
-    if (-not (Test-Path $langProfileKey)) {
-        New-Item -Path $langProfileKey -Force | Out-Null
-    }
-    Set-ItemProperty -Path $langProfileKey -Name "Description" -Value "wbwIME" -Force
-    Set-ItemProperty -Path $langProfileKey -Name "Display Description" -Value "wbwIME" -Force
-    Set-ItemProperty -Path $langProfileKey -Name "Enable" -Value 1 -Force
-    Set-ItemProperty -Path $langProfileKey -Name "Install" -Value 1 -Force
-
-    # COM ThreadModel
-    $clsidKey = "HKLM:\SOFTWARE\Classes\CLSID\$clsid"
-    if (-not (Test-Path $clsidKey)) {
-        New-Item -Path $clsidKey -Force | Out-Null
-    }
-    Set-ItemProperty -Path $clsidKey -Name "ThreadModel" -Value "Both" -Force
-
-    Write-Host "  TSF 配置已写入注册表" -ForegroundColor Green
 } else {
     Write-Host "  TSF DLL 不存在，跳过注册" -ForegroundColor DarkYellow
 }

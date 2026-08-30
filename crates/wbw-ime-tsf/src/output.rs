@@ -164,8 +164,8 @@ unsafe fn es_do_caret(context: *mut c_void, ec: u32) {
         let mut fetched: u32 = 0;
         let hr = get_sel_fn(
             context,
-            ec,
             TF_DEFAULT_SELECTION,
+            1,
             &mut selection,
             &mut fetched,
         );
@@ -228,18 +228,28 @@ unsafe fn es_do_insert(context: *mut c_void, ec: u32, wide: Vec<u16>) {
 
         let insert_vtable = *(insert_sel as *const *const usize);
         // ITfInsertAtSelection::InsertTextAtSelection (index 3):
-        //   (ec, dwFlags, pchText, cch, pchInserted)
+        //   (ec, dwFlags, pchText, cch[LONG], ppRange[ITfRange **])
         let insert_fn: unsafe extern "system" fn(
             *mut c_void,
             u32,
             u32,
             *const u16,
-            u32,
-            *mut u32,
+            i32,
+            *mut *mut c_void,
         ) -> HRESULT = std::mem::transmute(*insert_vtable.add(3));
 
-        let mut written: u32 = 0;
-        let hr = insert_fn(insert_sel, ec, 0, wide.as_ptr(), wide.len() as u32, &mut written);
+        let mut range: *mut c_void = std::ptr::null_mut();
+        let hr = insert_fn(
+            insert_sel,
+            ec,
+            0,
+            wide.as_ptr(),
+            wide.len() as i32,
+            &mut range,
+        );
+        if !range.is_null() {
+            release_obj(range);
+        }
 
         release_obj(insert_sel);
         INSERT_OUT.with(|o| o.set(hr == S_OK));
@@ -289,30 +299,31 @@ pub unsafe fn get_caret_screen_coords(thread_mgr: *mut c_void) -> Option<(i32, i
         SESSION_JOB.with(|j| *j.borrow_mut() = Some(SessionJob::Caret));
 
         let ctx_vtable = *(context as *const *const usize);
-        // ITfContext::RequestEditSession (index 3): (tid, pES, dwFlags, phrSession)
+        // ITfContext::RequestEditSession (index 3): (tid, pES, dwFlags, pec: TfEditCookie*)
+        // TfEditCookie 在 x64 上是 LONG_PTR（8 字节），不能用 i32。
         let req_fn: unsafe extern "system" fn(
             *mut c_void,
             u32,
             *mut c_void,
             u32,
-            *mut i32,
+            *mut i64,
         ) -> HRESULT = std::mem::transmute(*ctx_vtable.add(3));
 
         let sink = &EDIT_SESSION_VTABLE as *const _ as *mut c_void;
-        let mut hr_session: i32 = 0;
+        let mut _edit_cookie: i64 = 0;
         let hr = req_fn(
             context,
             client_id,
             sink,
             TF_ES_SYNC | TF_ES_READ,
-            &mut hr_session,
+            &mut _edit_cookie,
         );
 
         SESSION_CTX.with(|c| c.set(std::ptr::null_mut()));
         SESSION_JOB.with(|j| *j.borrow_mut() = None);
         release_obj(context);
 
-        if hr != S_OK || hr_session != S_OK {
+        if hr != S_OK {
             return None;
         }
 
@@ -346,30 +357,30 @@ pub unsafe fn insert_text_at_caret(thread_mgr: *mut c_void, text: &str) -> bool 
         SESSION_JOB.with(|j| *j.borrow_mut() = Some(SessionJob::Insert { wide }));
 
         let ctx_vtable = *(context as *const *const usize);
-        // ITfContext::RequestEditSession (index 3): (tid, pES, dwFlags, phrSession)
+        // ITfContext::RequestEditSession (index 3): (tid, pES, dwFlags, pec: TfEditCookie*)
         let req_fn: unsafe extern "system" fn(
             *mut c_void,
             u32,
             *mut c_void,
             u32,
-            *mut i32,
+            *mut i64,
         ) -> HRESULT = std::mem::transmute(*ctx_vtable.add(3));
 
         let sink = &EDIT_SESSION_VTABLE as *const _ as *mut c_void;
-        let mut hr_session: i32 = 0;
+        let mut _edit_cookie: i64 = 0;
         let hr = req_fn(
             context,
             client_id,
             sink,
             TF_ES_SYNC | TF_ES_READ | TF_ES_WRITE,
-            &mut hr_session,
+            &mut _edit_cookie,
         );
 
         SESSION_CTX.with(|c| c.set(std::ptr::null_mut()));
         SESSION_JOB.with(|j| *j.borrow_mut() = None);
         release_obj(context);
 
-        if hr != S_OK || hr_session != S_OK {
+        if hr != S_OK {
             return false;
         }
 

@@ -27,6 +27,17 @@
   - 移除死亡组合路径（`tsf_start_composition`/`tsf_update_composition`，含 `StartComposition` 的参数错位 crash 炸弹），保留 `tsf_end_composition` 为安全 no-op。
   - `text_service.rs`：新增 `THREAD_MGR`/`CLIENT_ID` 全局，`ts_activate` 记录之（RequestEditSession 需要 TfClientId）。
 
+### 完成（可选择性 + 激活崩溃，最新）
+- **输入法不可选/仅桌面修复**：`DllRegisterServer` 补全 7 个 TSF Category 注册（`TIP\{CLSID}\Category\Category\{catid}\{CLSID}` + `Category\Item\{CLSID}\{catid}`），含 `GUID_TFCAT_TIP_KEYBOARD`（键盘分类）与 `GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT`（消除"仅桌面"、支持新式应用候选栏）。已实机验证：**设置里 wbwIME 可选、不再"仅桌面"**。
+- **新增 `log.rs` 固定路径诊断日志**（`C:\Users\wbw\AppData\Local\Temp\wbwime_tsf.log`，含 `[pid]` 前缀），绕过 DllMain 加载器锁。
+- **激活崩溃根因（实机日志定位）**：切换/激活 wbwIME 后所有应用崩溃。日志显示崩溃进程实为 **ApplicationFrameHost（新式应用宿主）**，它通过**非Ex 接口**（`ITfTextInputProcessor`，`AA80E7F7`）激活，且 `ts_activate` 中对 `punk` QI `IID_ITF_THREAD_MGR` 返回 **E_NOINTERFACE（0x80004002）、thread_mgr=null**，导致 `ts_activate` 返回 `E_FAIL` → TSF/宿主把激活当失败处理 → 崩溃。
+- **修复（`ts_activate`）**：
+  - 由 `punk` 依次尝试 QI 4 个候选接口拿线程管理器：`ITfThreadMgr`（AA80E901）、`ITfThreadMgr2`（3D0F29FA）、`ITfThreadMgrEx`（3E90ADE3）、以及激活前 TSF 常请求的未知接口 `6E4E2102-F9CD-433D-B496-303CE03A6507`（新增 `IID_UNKNOWN_6E4E2102` 用于探测）。
+  - 全部失败时**降级返回 `S_OK`**（不拦截按键、不进 key sink），**绝不返回 E_FAIL**，从根上杜绝 TSF/宿主激活失败崩溃。逐接口 QI 均写日志便于继续定位。
+
+### 待办（激活降级后）
+- 确认 `punk` 实际能 QI 出哪一个线程管理器接口（看新日志 `punk QI …` 各行），据此走完整 key sink 路径让输入法真正可用；若 `6E4E2102` 是有效的线程管理器代理，需从该接口正确初始化 keystroke mgr。
+
 ## 候选窗口 IPC 集成
 
 ### 架构（已与用户确认）
