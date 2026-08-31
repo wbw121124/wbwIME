@@ -4,9 +4,6 @@ use crate::guid::*;
 use crate::output::{HRESULT, S_OK, ULONG};
 use crate::text_service::{self, TextService};
 
-static DLL_REF_COUNT: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-
-/// 本 DLL 的模块句柄（由 DllMain 传入），用于获取 DLL 自身路径。
 static DLL_HINST: std::sync::atomic::AtomicPtr<c_void> =
     std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
 
@@ -97,7 +94,7 @@ unsafe extern "system" fn cf_release(this: *mut c_void) -> ULONG {
 }
 
 unsafe extern "system" fn cf_create_instance(
-    this: *mut c_void,
+    _this: *mut c_void,
     _outer: *mut c_void,
     riid: *const Guid,
     ppv: *mut *mut c_void,
@@ -115,12 +112,11 @@ unsafe extern "system" fn cf_create_instance(
         || *iid == IID_ITF_TEXT_INPUT_PROCESSOR
         || *iid == IID_ITF_TEXT_INPUT_PROCESSOR_EX
     {
-        // COM 规范：CreateInstance 必须对 factory 自身和返回对象都 AddRef。
-        // 不对 factory AddRef → COM Release factory 后 use-after-free → 崩溃。
-        cf_add_ref(this);
         let ts = TextService::new();
+        // new() 已将 ref_count 设为 1（对调用者的引用），不需要额外 AddRef。
+        // 也不对 factory AddRef——COM 规范：CreateInstance 的输出指针
+        // 由调用者通过 Release 释放，不持有 factory 的引用。
         unsafe {
-            text_service::ts_add_ref(ts as *mut c_void);
             *ppv = ts as *mut c_void;
         }
         return S_OK;
@@ -151,11 +147,9 @@ pub unsafe extern "system" fn DllMain(
 ) -> i32 {
     match reason {
         1 => {
-            DLL_REF_COUNT.store(1, std::sync::atomic::Ordering::SeqCst);
             DLL_HINST.store(hinst, std::sync::atomic::Ordering::SeqCst);
         }
         0 => {
-            DLL_REF_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
             if let Ok(mut guard) = text_service::IME_STATE.lock() {
                 *guard = None;
             }
@@ -197,10 +191,10 @@ pub unsafe extern "system" fn DllGetClassObject(
 /// 无特殊安全要求。
 #[no_mangle]
 pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
-    if DLL_REF_COUNT.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+    if text_service::TEXT_SERVICE_COUNT.load(std::sync::atomic::Ordering::SeqCst) == 0 {
         S_OK
     } else {
-        1
+        1 // S_FALSE
     }
 }
 
@@ -297,12 +291,12 @@ pub unsafe extern "system" fn DllRegisterServer() -> HRESULT {
     ];
     for cat in &category_guids {
         put(write(
-            &format!("{}\\Category\\Category\\{{{}}}\\\\{{{}}}", tip_key, cat, clsid),
+            &format!("{}\\Category\\Category\\{{{}}}\\{{{}}}", tip_key, cat, clsid),
             "",
             "",
         ));
         put(write(
-            &format!("{}\\Category\\Item\\{{{}}}\\\\{{{}}}", tip_key, clsid, cat),
+            &format!("{}\\Category\\Item\\{{{}}}\\{{{}}}", tip_key, clsid, cat),
             "",
             "",
         ));

@@ -225,8 +225,7 @@ pub fn refresh_gui() {
 
 /// 当前会话激活的 TextService 持有的 thread_mgr 指针。
 fn current_thread_mgr() -> *mut std::ffi::c_void {
-    // 由 text_service 维护的全局 thread_mgr 指针（单实例）。
-    crate::text_service::THREAD_MGR.load(std::sync::atomic::Ordering::SeqCst)
+    crate::text_service::current_tsf_ctx().0
 }
 
 /// 拿不到光标坐标时的兜底位置（主显示器右下角上方）。

@@ -287,7 +287,7 @@ static EDIT_SESSION_VTABLE: EditSessionVtable = EditSessionVtable {
 /// `thread_mgr` 必须是指向有效 `ITfThreadMgr` 的指针。
 pub unsafe fn get_caret_screen_coords(thread_mgr: *mut c_void) -> Option<(i32, i32)> {
     unsafe {
-        let client_id = crate::text_service::CLIENT_ID.load(std::sync::atomic::Ordering::SeqCst);
+        let (_, client_id) = crate::text_service::current_tsf_ctx();
         if client_id == 0 {
             return None;
         }
@@ -340,7 +340,7 @@ pub unsafe fn get_caret_screen_coords(thread_mgr: *mut c_void) -> Option<(i32, i
 /// `thread_mgr` 必须是指向有效 `ITfThreadMgr` 的指针，或为 null（返回 `false`）。
 pub unsafe fn insert_text_at_caret(thread_mgr: *mut c_void, text: &str) -> bool {
     unsafe {
-        let client_id = crate::text_service::CLIENT_ID.load(std::sync::atomic::Ordering::SeqCst);
+        let (_, client_id) = crate::text_service::current_tsf_ctx();
         if client_id == 0 || text.is_empty() {
             return false;
         }

@@ -2,7 +2,18 @@
 # 用法: 以管理员运行
 $ErrorActionPreference = "Stop"
 $InstallDir = "$env:LOCALAPPDATA\wbwIME"
-$SrcDll = "D:\project\wbwIME\target\release\wbw_ime_tsf.dll"
+
+# 动态定位构建产物：优先 target/release，再 target/debug
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$repoRoot = (Resolve-Path (Join-Path $scriptDir "..")).Path
+$SrcDll = Join-Path $repoRoot "target\release\wbw_ime_tsf.dll"
+if (-not (Test-Path $SrcDll)) {
+    $SrcDll = Join-Path $repoRoot "target\debug\wbw_ime_tsf.dll"
+}
+if (-not (Test-Path $SrcDll)) {
+    Write-Host "找不到构建产物（target/release 或 target/debug 均无 wbw_ime_tsf.dll），请先 cargo build --release" -ForegroundColor Red
+    exit 1
+}
 $DstDll = Join-Path $InstallDir "wbw_ime_tsf.dll"
 $clsid = "{E8A3B0F2-1234-5678-9ABC-DEF012345678}"
 
@@ -33,6 +44,10 @@ Write-Host "已复制新 DLL" -ForegroundColor Green
 
 # 4. 重新注册
 $regProc = Start-Process regsvr32.exe -ArgumentList "/s", "`"$DstDll`"" -Wait -PassThru -WindowStyle Hidden
-Write-Host "注册退出码: $($regProc.ExitCode)" -ForegroundColor Green
+if ($regProc.ExitCode -ne 0) {
+    Write-Host "regsvr32 注册失败，退出码: $($regProc.ExitCode)" -ForegroundColor Red
+    exit 1
+}
+Write-Host "注册成功" -ForegroundColor Green
 
 Write-Host "=== 完成 ===" -ForegroundColor Green

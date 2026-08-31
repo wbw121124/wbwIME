@@ -1,6 +1,6 @@
 # uninstall-clean.ps1: 完全清理 wbwIME 系统安装（注销 COM + 删注册表 + 删 DLL）
 # 用法: 以管理员运行
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = "Stop"
 $InstallDir = "$env:LOCALAPPDATA\wbwIME"
 $DstDll = Join-Path $InstallDir "wbw_ime_tsf.dll"
 $clsid = "{E8A3B0F2-1234-5678-9ABC-DEF012345678}"

@@ -1,5 +1,7 @@
 use std::ffi::c_void;
 
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT};
+
 use crate::guid::*;
 use crate::output;
 use crate::output::{HRESULT, S_OK, ULONG};
@@ -7,16 +9,44 @@ use crate::output::{HRESULT, S_OK, ULONG};
 pub static IME_STATE: std::sync::Mutex<Option<crate::state::ImeState>> =
     std::sync::Mutex::new(None);
 
-/// 当前会话激活的 `ITfThreadMgr` 指针（供 IPC 取光标坐标）。
-pub static THREAD_MGR: std::sync::atomic::AtomicPtr<std::ffi::c_void> =
-    std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+/// 当前会话激活的 TSF 上下文（thread_mgr + client_id）。
+///
+/// 用单一 Mutex 而非两个 Atomic* 保证两者读写的原子性——
+/// 避免 ks_key_down 中两次 load 之间 deactivate 导致 UAF。
+pub static TSF_CTX: std::sync::Mutex<TsfContext> = std::sync::Mutex::new(TsfContext::EMPTY);
 
-/// 当前会话激活的 TfClientId（`ITfContext::RequestEditSession` 需要）。
-pub static CLIENT_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// 存储的 TSF 上下文值（不含引用计数，thread_mgr 由调用方管理生命周期）。
+#[derive(Clone, Copy)]
+pub struct TsfContext {
+    pub thread_mgr: *mut c_void,
+    pub client_id: u32,
+}
+
+impl TsfContext {
+    pub const EMPTY: Self = Self {
+        thread_mgr: std::ptr::null_mut(),
+        client_id: 0,
+    };
+}
+
+unsafe impl Send for TsfContext {}
+unsafe impl Sync for TsfContext {}
+
+/// 一次性读取当前 TSF 上下文（thread_mgr, client_id）。
+///
+/// 保证返回值内部一致：要么都是激活态，要么都是清空态。
+pub fn current_tsf_ctx() -> (*mut c_void, u32) {
+    let ctx = TSF_CTX.lock().unwrap();
+    (ctx.thread_mgr, ctx.client_id)
+}
 
 /// 字典加载是否已尝试过（保证只初始化一次，且避免在 DllMain 的加载器锁下做重工作）。
 static STATE_INITIALIZED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+
+/// 当前活跃的 TextService 实例数（供 DllCanUnloadNow 判断）。
+pub static TEXT_SERVICE_COUNT: std::sync::atomic::AtomicI32 =
+    std::sync::atomic::AtomicI32::new(0);
 
 /// 惰性初始化输入法状态。
 ///
@@ -222,6 +252,7 @@ unsafe impl Sync for TextService {}
 
 impl TextService {
     pub fn new() -> *mut Self {
+        TEXT_SERVICE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Box::into_raw(Box::new(Self {
             lp_vtbl: &TEXT_SERVICE_VTABLE,
             ref_count: 1,
@@ -284,6 +315,7 @@ unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
     ts.ref_count -= 1;
     let count = ts.ref_count as ULONG;
     if count == 0 {
+        TEXT_SERVICE_COUNT.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         unsafe {
             let _ = Box::from_raw(this as *mut TextService);
         }
@@ -362,8 +394,7 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
     }
 
     ts.thread_mgr = thread_mgr;
-    THREAD_MGR.store(thread_mgr, std::sync::atomic::Ordering::SeqCst);
-    CLIENT_ID.store(ts.client_id, std::sync::atomic::Ordering::SeqCst);
+    *TSF_CTX.lock().unwrap() = TsfContext { thread_mgr, client_id: ts.client_id };
 
     // 用独立的 KeyEventSink 对象做按键 sink，避免 vtable 布局冲突。
     let sink = std::ptr::addr_of!(KEY_EVENT_SINK) as *mut c_void;
@@ -380,9 +411,7 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
 
     if hr != S_OK {
         unsafe {
-            // 先清全局指针——防止释放 thread_mgr 后 ks_key_down 等读到悬空指针
-            THREAD_MGR.store(std::ptr::null_mut(), std::sync::atomic::Ordering::SeqCst);
-            CLIENT_ID.store(0, std::sync::atomic::Ordering::SeqCst);
+            *TSF_CTX.lock().unwrap() = TsfContext::EMPTY;
             let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
                 std::mem::transmute(*(*(thread_mgr as *const *const usize)).add(2));
             release_fn(thread_mgr);
@@ -399,9 +428,8 @@ unsafe extern "system" fn ts_deactivate(this: *mut c_void) -> HRESULT {
     let ts = unsafe { &mut *(this as *mut TextService) };
 
     if !ts.thread_mgr.is_null() {
-        // 先清全局指针——防止 ks_key_down 等在释放 thread_mgr 后仍读取到悬空指针
-        THREAD_MGR.store(std::ptr::null_mut(), std::sync::atomic::Ordering::SeqCst);
-        CLIENT_ID.store(0, std::sync::atomic::Ordering::SeqCst);
+        // 先清全局上下文——防止 ks_key_down 等在释放 thread_mgr 后仍读取到悬空指针
+        *TSF_CTX.lock().unwrap() = TsfContext::EMPTY;
 
         let mut keystroke_mgr: *mut c_void = std::ptr::null_mut();
         let hr = unsafe {
@@ -462,6 +490,18 @@ unsafe extern "system" fn ks_test_key_down(
     }
     crate::log::log(&format!("ks_test_key_down w={w_param}"));
     ensure_state_loaded();
+
+    let vkey = w_param & 0xFF;
+
+    // 有 Ctrl/Alt/Shift 修饰键时不拦截——让快捷键（Ctrl+A/C/V 等）正常工作。
+    // 仅在纯字母键且无修饰键时才考虑拦截。
+    let ctrl = (GetKeyState(VK_CONTROL.into()) as u16 & 0x8000) != 0;
+    let alt = (GetKeyState(VK_MENU.into()) as u16 & 0x8000) != 0;
+    let shift = (GetKeyState(VK_SHIFT.into()) as u16 & 0x8000) != 0;
+    if ctrl || alt {
+        return S_OK;
+    }
+
     let mut state = match IME_STATE.lock() {
         Ok(s) => s,
         Err(_) => return S_OK,
@@ -470,8 +510,7 @@ unsafe extern "system" fn ks_test_key_down(
         Some(s) => s,
         None => return S_OK,
     };
-    let vkey = w_param & 0xFF;
-    if state.composing || (0x41..=0x5A).contains(&vkey) {
+    if state.composing || (!shift && (0x41..=0x5A).contains(&vkey)) {
         unsafe {
             *pf_eaten = 1;
         }
@@ -531,8 +570,7 @@ unsafe extern "system" fn ks_key_down(
     };
 
     if let Some(text) = commit_text {
-        let thread_mgr = THREAD_MGR.load(std::sync::atomic::Ordering::SeqCst);
-        let client_id = CLIENT_ID.load(std::sync::atomic::Ordering::SeqCst);
+        let (thread_mgr, client_id) = current_tsf_ctx();
         if !thread_mgr.is_null() {
             output::tsf_insert_text(thread_mgr, client_id, &text);
         } else {
