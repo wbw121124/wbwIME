@@ -38,6 +38,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $tsfDll = Join-Path $scriptDir "wbw_ime_tsf.dll"
 $nativeDll = Join-Path $scriptDir "wbw_ime_native.dll"
 $cliExe = Join-Path $scriptDir "wbwime.exe"
+$guiExe = Join-Path $scriptDir "wbw-ime-gui.exe"
 
 # 构建模式：查找 target/release 或 target/debug
 if (-not (Test-Path $tsfDll) -and -not (Test-Path $cliExe)) {
@@ -53,12 +54,14 @@ if (-not (Test-Path $tsfDll) -and -not (Test-Path $cliExe)) {
     $tsfDll = Join-Path $targetDir "wbw_ime_tsf.dll"
     $nativeDll = Join-Path $targetDir "wbw_ime_native.dll"
     $cliExe = Join-Path $targetDir "wbwime.exe"
+    $guiExe = Join-Path $targetDir "wbw-ime-gui.exe"
 }
 
 $foundFiles = @()
 if (Test-Path $tsfDll) { $foundFiles += "wbw_ime_tsf.dll (TSF 输入法)" }
 if (Test-Path $nativeDll) { $foundFiles += "wbw_ime_native.dll (C API)" }
 if (Test-Path $cliExe) { $foundFiles += "wbwime.exe (命令行工具)" }
+if (Test-Path $guiExe) { $foundFiles += "wbw-ime-gui.exe (候选窗口)" }
 
 if ($foundFiles.Count -eq 0) {
     Write-Host "  未找到构建产物，请先运行:" -ForegroundColor Red
@@ -113,6 +116,10 @@ if (Test-Path $nativeDll) {
 if (Test-Path $cliExe) {
     Copy-Item $cliExe $InstallDir -Force
     $filesToCopy += "wbwime.exe"
+}
+if (Test-Path $guiExe) {
+    Copy-Item $guiExe $InstallDir -Force
+    $filesToCopy += "wbw-ime-gui.exe"
 }
 
 # 复制词典 — 先查分发包目录，再查项目目录

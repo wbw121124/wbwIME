@@ -14,7 +14,12 @@ if (-not (Test-Path $SrcDll)) {
     Write-Host "找不到构建产物（target/release 或 target/debug 均无 wbw_ime_tsf.dll），请先 cargo build --release" -ForegroundColor Red
     exit 1
 }
+$SrcGui = Join-Path $repoRoot "target\release\wbw-ime-gui.exe"
+if (-not (Test-Path $SrcGui)) {
+    $SrcGui = Join-Path $repoRoot "target\debug\wbw-ime-gui.exe"
+}
 $DstDll = Join-Path $InstallDir "wbw_ime_tsf.dll"
+$DstGui = Join-Path $InstallDir "wbw-ime-gui.exe"
 $clsid = "{E8A3B0F2-1234-5678-9ABC-DEF012345678}"
 
 Write-Host "=== 重装 TSF DLL ===" -ForegroundColor Cyan
@@ -41,6 +46,22 @@ for ($i = 0; $i -lt 5; $i++) {
 }
 if (-not $copied) { Write-Host "无法复制 DLL（被占用）。请关闭所有 wbwIME/文本编辑器后重试。" -ForegroundColor Red; exit 1 }
 Write-Host "已复制新 DLL" -ForegroundColor Green
+
+# 3b. 复制候选窗口 GUI（重试处理占用；缺失仅警告，不阻断 TSF 注册）
+if (Test-Path $SrcGui) {
+    $guiCopied = $false
+    for ($i = 0; $i -lt 5; $i++) {
+        try { Copy-Item $SrcGui $DstGui -Force -ErrorAction Stop; $guiCopied = $true; break }
+        catch { Write-Host "GUI 复制失败第 $i 次 (可能占用)，重试..." -ForegroundColor DarkYellow; Start-Sleep -Seconds 1 }
+    }
+    if ($guiCopied) {
+        Write-Host "已复制候选窗口 wbw-ime-gui.exe" -ForegroundColor Green
+    } else {
+        Write-Host "无法复制 wbw-ime-gui.exe（被占用）。候选窗口将无法弹出，请关闭占用进程后重跑。" -ForegroundColor Red
+    }
+} else {
+    Write-Host "未找到 wbw-ime-gui.exe，候选窗口将无法弹出。请先 cargo build --release -p wbw-ime-gui" -ForegroundColor DarkYellow
+}
 
 # 4. 重新注册
 $regProc = Start-Process regsvr32.exe -ArgumentList "/s", "`"$DstDll`"" -Wait -PassThru -WindowStyle Hidden
