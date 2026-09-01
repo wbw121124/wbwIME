@@ -331,10 +331,30 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
     ts.client_id = tid;
     crate::log::log("ts_activate: before QI thread_mgr");
 
-    // punk ������ͨ�ĵ��߹����������Ǹ���ܵ����̻᷵�� E_NOINTERFACE��
-    // ���δ��Ž�Ϊ�ɵ�ģʽ��S_OK���������� E_FAIL �������/���� crash��
+    // TSF 规范：ActivateEx 的 punk 参数本身就是指向线程管理器的指针。
+    // 标准 msctf.dll 中 ITfThreadMgr / ITfThreadMgr2 / ITfThreadMgrEx /
+    // ITfKeystrokeMgr 全部位于同一个 COM 对象（CLSID_TF_ThreadMgr）上，
+    // 因此从 punk（或任一接口指针）QI ITfKeystrokeMgr 必然成功。
+    //
+    // 这里直接对 punk QI ITfKeystrokeMgr，不使用"多接口三选一"再绕道的方式。
+    // 部分受限宿主（TextInputHost/ApplicationFrameHost）可能仅暴露精简对象，
+    // 若确实拿不到 keystroke mgr，则降级：保留线程上下文但跳过按键 sink，
+    // 避免返回错误导致宿主崩溃。
+    crate::log::log("ts_activate: before QI keystroke_mgr (from punk)");
+    let mut keystroke_mgr: *mut c_void = std::ptr::null_mut();
+    let hr = unsafe {
+        let qi_fn: unsafe extern "system" fn(
+            *mut c_void,
+            *const Guid,
+            *mut *mut c_void,
+        ) -> HRESULT = std::mem::transmute(**(punk as *const *const usize));
+        qi_fn(punk as *mut c_void, &IID_ITF_KEY_STROKE_MGR, &mut keystroke_mgr)
+    };
+    crate::log::log(&format!("ts_activate: keystroke_mgr hr=0x{:08X} km={:p}", hr as u32, keystroke_mgr));
+
+    // 需要被保留的 ITfThreadMgr/Ex 接口（取得第一个可用的，用于后续 edit session）。
+    // 优先标准 ITfThreadMgr，其次 ITfThreadMgrEx / ITfThreadMgr2（同一对象）。
     let mut thread_mgr: *mut c_void = std::ptr::null_mut();
-    let mut hr: HRESULT = -2147467263;
     unsafe {
         let qi_fn: unsafe extern "system" fn(
             *mut c_void,
@@ -343,8 +363,8 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
         ) -> HRESULT = std::mem::transmute(**(punk as *const *const usize));
         let candidates = [
             IID_ITF_THREAD_MGR,
-            IID_ITF_THREAD_MGR2,
             IID_ITF_THREAD_MGR_EX,
+            IID_ITF_THREAD_MGR2,
         ];
         for cand in &candidates {
             let mut out: *mut c_void = std::ptr::null_mut();
@@ -355,36 +375,23 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
             ));
             if h == S_OK && !out.is_null() {
                 thread_mgr = out;
-                hr = h;
                 break;
             }
         }
-    }
-    crate::log::log(&format!("ts_activate: thread_mgr hr=0x{:08X} tm={:p}", hr as u32, thread_mgr));
-    if hr != S_OK || thread_mgr.is_null() {
-        // ��ȡ�����߹������� E_FAIL��TSF/���� crash�������� S_OK �|���ģʽ��
-        crate::log::log("ts_activate: NULL thread_mgr -> degraded S_OK (no key sink)");
-        return S_OK;
-    }
-
-    crate::log::log("ts_activate: before QI keystroke_mgr");
-    let mut keystroke_mgr: *mut c_void = std::ptr::null_mut();
-    let hr = unsafe {
-        let qi_fn: unsafe extern "system" fn(
-            *mut c_void,
-            *const Guid,
-            *mut *mut c_void,
-        ) -> HRESULT = std::mem::transmute(**(thread_mgr as *const *const usize));
-        qi_fn(thread_mgr, &IID_ITF_KEY_STROKE_MGR, &mut keystroke_mgr)
-    };
-    crate::log::log(&format!("ts_activate: keystroke_mgr hr=0x{:08X} km={:p}", hr as u32, keystroke_mgr));
-    if hr != S_OK || keystroke_mgr.is_null() {
-        unsafe {
-            let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
-                std::mem::transmute(*(*(thread_mgr as *const *const usize)).add(2));
-            release_fn(thread_mgr);
+        // 若连一个线程管理器接口都拿不到，退回 punk 本身（有的宿主直接给的就是它）。
+        if thread_mgr.is_null() {
+            thread_mgr = punk;
         }
-        return -2147467259;
+    }
+    crate::log::log(&format!("ts_activate: thread_mgr tm={:p}", thread_mgr));
+
+    // 拿不到 keystroke mgr 时：保留线程上下文供后续优先 TSF 输出（若可用），
+    // 但无按键 sink → 降级模式（调用方回退剪贴板）。
+    if hr != S_OK || keystroke_mgr.is_null() {
+        crate::log::log("ts_activate: ITfKeystrokeMgr not available -> degraded, keep context");
+        ts.thread_mgr = thread_mgr;
+        *TSF_CTX.lock().unwrap() = TsfContext { thread_mgr, client_id: ts.client_id };
+        return S_OK;
     }
 
     ts.thread_mgr = thread_mgr;
