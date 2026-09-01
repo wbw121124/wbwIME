@@ -68,7 +68,7 @@ fn bench_ranker(c: &mut Criterion) {
     let rank_config = wbw_types::RankConfig::default();
     let ranker = wbw_rank::Ranker::new(rank_config);
     c.bench_function("ranker_rank", |b| {
-        b.iter(|| ranker.rank(candidates.clone()));
+        b.iter(|| ranker.rank(&candidates));
     });
 }
 

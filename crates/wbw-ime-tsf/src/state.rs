@@ -75,7 +75,7 @@ impl ImeState {
             session_id: 0,
         };
         let matched = self.matcher.match_input(&ctx);
-        let ranked = self.ranker.rank(matched);
+        let ranked = self.ranker.rank(&matched);
         self.all_candidates = ranked;
         self.page = 0;
         self.selected_index = 0;

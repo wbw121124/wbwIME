@@ -114,6 +114,8 @@ impl FuzzyMatcher {
         map
     }
 
+    const MAX_VARIANTS: usize = 512;
+
     /// 生成输入的所有模糊变体
     ///
     /// 对输入中的每个音素，根据规则生成所有可能的替换，
@@ -121,6 +123,9 @@ impl FuzzyMatcher {
     ///
     /// 基于字符序列处理，避免多字节切片越界，且替换长度变化
     /// （如 z→zh）不会造成后续偏移错位。
+    ///
+    /// 变体总数上限为 [`MAX_VARIANTS`](Self::MAX_VARIANTS)，
+    /// 超出后截断以防止组合爆炸。
     pub fn generate_variants(&self, input: &str) -> Vec<String> {
         if !self.config.enabled {
             return vec![input.to_string()];
@@ -137,12 +142,18 @@ impl FuzzyMatcher {
             let mut new_variants: Vec<String> = Vec::new();
 
             for variant in &variants {
+                if variants.len() + new_variants.len() >= Self::MAX_VARIANTS {
+                    break;
+                }
                 let chars: Vec<char> = variant.chars().collect();
                 // 在每个不重叠的字符位置尝试替换
                 let mut i = 0;
                 while i + from_chars.len() <= chars.len() {
                     if chars[i..i + from_chars.len()] == from_chars[..] {
                         for target in &targets {
+                            if variants.len() + new_variants.len() >= Self::MAX_VARIANTS {
+                                break;
+                            }
                             let mut out: String = chars[..i].iter().collect();
                             out.push_str(target);
                             out.extend(chars[i + from_chars.len()..].iter());
@@ -161,6 +172,7 @@ impl FuzzyMatcher {
         // 去重
         variants.sort();
         variants.dedup();
+        variants.truncate(Self::MAX_VARIANTS);
         variants
     }
 

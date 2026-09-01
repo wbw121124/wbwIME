@@ -359,7 +359,7 @@ fn run_interactive() -> CliResult<()> {
 
         let ctx = make_context(&buffer);
         let candidates = matcher.match_input(&ctx);
-        let ranked = ranker.rank(candidates);
+        let ranked = ranker.rank(&candidates);
 
         let max = config.rank.max_candidates.max(1);
         println!("\n匹配结果 ({} 个候选):", ranked.len());
@@ -450,7 +450,7 @@ fn run_query(code: &str) -> CliResult<()> {
         return Ok(());
     }
 
-    let ranked = ranker.rank(all);
+    let ranked = ranker.rank(&all);
     let max = config.rank.max_candidates.max(1);
     println!("编码 '{}' 的匹配 ({} 个):", code, ranked.len());
     show_candidates(&ranked[..ranked.len().min(max)]);
@@ -500,7 +500,7 @@ fn run_test_match(code: &str, dict_path: &Path) -> CliResult<()> {
         });
         let mut seen = std::collections::HashSet::new();
         all.retain(|c| seen.insert(c.text.clone()));
-        let ranked = ranker.rank(all);
+    let ranked = ranker.rank(&all);
         println!("\n最终排序 (前 {} 个):", config.rank.max_candidates);
         let max = config.rank.max_candidates.max(1);
         show_candidates(&ranked[..ranked.len().min(max)]);

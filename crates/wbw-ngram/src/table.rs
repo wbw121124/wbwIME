@@ -2,6 +2,7 @@
 //!
 //! 提供 N-gram 语言模型的概率存储和查询功能。
 
+use smallvec::SmallVec;
 use std::collections::HashMap;
 
 /// N-gram 概率表
@@ -56,12 +57,15 @@ impl NgramTable {
     /// 查询 P(word | context)
     ///
     /// 使用最大似然估计：P(w|c) = count(c,w) / count(c)
+    ///
+    /// 注意：`lookup`/`conditional_probability`/`count` 为高频调用路径。
+    /// 上下文通常很小（1~2 项），因此使用 `SmallVec` 内联构建以避免堆分配。
     pub fn lookup(&self, context: &[&str], word: &str) -> f64 {
-        let ctx: Vec<String> = context.iter().map(|s| s.to_string()).collect();
-        let key = (ctx.clone(), word.to_string());
+        let ctx: SmallVec<[String; 2]> = context.iter().map(|s| s.to_string()).collect();
+        let key = (ctx.to_vec(), word.to_string());
 
         let ngram_count = self.counts.get(&key).copied().unwrap_or(0);
-        let ctx_count = self.context_counts.get(&ctx).copied().unwrap_or(0);
+        let ctx_count = self.context_counts.get(ctx.as_slice()).copied().unwrap_or(0);
 
         if ctx_count == 0 {
             0.0
@@ -72,11 +76,15 @@ impl NgramTable {
 
     /// 查询条件概率（带 Laplace 平滑）
     pub fn conditional_probability(&self, context: &[&str], word: &str) -> f64 {
-        let ctx: Vec<String> = context.iter().map(|s| s.to_string()).collect();
-        let key = (ctx.clone(), word.to_string());
+        let ctx: SmallVec<[String; 2]> = context.iter().map(|s| s.to_string()).collect();
+        let key = (ctx.to_vec(), word.to_string());
 
         let ngram_count = self.counts.get(&key).copied().unwrap_or(0);
-        let ctx_count = self.context_counts.get(&ctx).copied().unwrap_or(0);
+        let ctx_count = self
+            .context_counts
+            .get(ctx.as_slice())
+            .copied()
+            .unwrap_or(0);
 
         // Laplace 平滑：(count + 1) / (context_count + vocab_size)
         let vocab = self.vocab_size.max(1) as f64;
@@ -85,9 +93,9 @@ impl NgramTable {
 
     /// 获取 N-gram 计数
     pub fn count(&self, context: &[&str], word: &str) -> u64 {
-        let ctx: Vec<String> = context.iter().map(|s| s.to_string()).collect();
+        let ctx: SmallVec<[String; 2]> = context.iter().map(|s| s.to_string()).collect();
         self.counts
-            .get(&(ctx, word.to_string()))
+            .get(&(ctx.to_vec(), word.to_string()))
             .copied()
             .unwrap_or(0)
     }

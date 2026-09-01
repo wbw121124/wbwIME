@@ -209,7 +209,7 @@ impl WbwIme {
             session_id: 0,
         };
         let matched = self.matcher.match_input(&ctx);
-        let ranked = self.ranker.rank(matched);
+        let ranked = self.ranker.rank(&matched);
         window.set_candidates(ranked);
         let _ = window.show();
     }

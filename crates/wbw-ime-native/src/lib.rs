@@ -160,7 +160,7 @@ pub unsafe extern "C" fn wbw_ime_process_key(
             session_id: 0,
         };
         let matched = ime.matcher.match_input(&ctx);
-        ime.ranker.rank(matched)
+        ime.ranker.rank(&matched)
     } else {
         Vec::new()
     };
@@ -203,7 +203,7 @@ pub unsafe extern "C" fn wbw_ime_input_text(
             session_id: 0,
         };
         let matched = ime.matcher.match_input(&ctx);
-        candidates = ime.ranker.rank(matched);
+        candidates = ime.ranker.rank(&matched);
     }
 
     let response = ImeResponse {

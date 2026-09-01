@@ -258,10 +258,22 @@ impl ConfigDiff {
 
     /// 检查是否有差异
     pub fn has_changes(&self) -> bool {
-        self.weight_diff.pin_weight != 0.0
-            || self.weight_diff.user_weight != 0.0
-            || self.weight_diff.freq_weight != 0.0
-            || self.weight_diff.ngram_weight != 0.0
+        self.weight_diff
+            .pin_weight
+            .total_cmp(&0.0)
+            != std::cmp::Ordering::Equal
+            || self.weight_diff
+                .user_weight
+                .total_cmp(&0.0)
+                != std::cmp::Ordering::Equal
+            || self.weight_diff
+                .freq_weight
+                .total_cmp(&0.0)
+                != std::cmp::Ordering::Equal
+            || self.weight_diff
+                .ngram_weight
+                .total_cmp(&0.0)
+                != std::cmp::Ordering::Equal
             || self.max_candidates_diff.is_some()
     }
 }

@@ -79,8 +79,6 @@ pub struct ImeHost {
     buffer: String,
     /// 光标位置
     cursor: usize,
-    /// 当前输入模式
-    mode: InputMode,
     /// 候选词窗口管理器
     window_manager: CandidateWindowManager,
     /// 按键映射器
@@ -102,7 +100,6 @@ impl ImeHost {
             state: ImeState::Idle,
             buffer: String::new(),
             cursor: 0,
-            mode: InputMode::Pinyin,
             window_manager,
             key_mapper,
             confirmed_text: String::new(),
@@ -276,6 +273,8 @@ impl ImeHost {
 
         self.state = ImeState::Confirming;
         self.confirmed_text.push_str(&text);
+        self.buffer.clear();
+        self.cursor = 0;
 
         Ok(ImeResponse {
             response_type: ImeResponseType::Confirm,
@@ -370,7 +369,6 @@ impl ImeHost {
 
     /// 切换输入模式
     pub fn switch_mode(&mut self, mode: InputMode) -> ImeResult<()> {
-        self.mode = mode;
         self.config.input_mode = mode;
         Ok(())
     }
@@ -392,7 +390,7 @@ impl ImeHost {
 
     /// 获取当前输入模式
     pub fn mode(&self) -> InputMode {
-        self.mode
+        self.config.input_mode
     }
 
     /// 获取已确认的文本

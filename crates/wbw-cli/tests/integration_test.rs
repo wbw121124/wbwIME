@@ -100,7 +100,7 @@ fn test_candidate_ranking() {
             user_weight: None,
         },
     ];
-    let ranked = ranker.rank(candidates);
+    let ranked = ranker.rank(&candidates);
     assert_eq!(ranked.len(), 2);
     // 排序后第一个应是高分项
     assert_eq!(ranked[0].text, "我");

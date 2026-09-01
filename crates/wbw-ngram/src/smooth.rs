@@ -96,7 +96,9 @@ impl Smoother {
             SmoothMethod::AddK => Self::add_k(count, total, self.config.parameter),
             SmoothMethod::Interpolation => Self::interpolation(count, total, self.config.parameter),
             SmoothMethod::Backoff => Self::backoff(count, total, self.config.backoff_threshold),
-            SmoothMethod::GoodTuring => Self::laplace(count, total, 0.5), // 简化处理
+            SmoothMethod::GoodTuring => {
+                unimplemented!("Good-Turing 平滑尚未实现")
+            }
         }
     }
 }

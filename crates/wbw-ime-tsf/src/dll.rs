@@ -13,6 +13,10 @@ const E_NOTIMPL: HRESULT = -2147467263;
 const CLASS_E_CLASSNOTAVAILABLE: HRESULT = -2147221231;
 const E_UNEXPECTED: HRESULT = -2147418113;
 const E_FAIL: HRESULT = -2147467259;
+const S_FALSE: HRESULT = 1;
+
+const DLL_PROCESS_ATTACH: u32 = 1;
+const DLL_PROCESS_DETACH: u32 = 0;
 
 // ========== ClassFactory VTable ==========
 
@@ -145,10 +149,10 @@ pub unsafe extern "system" fn DllMain(
     _reserved: *mut c_void,
 ) -> i32 {
     match reason {
-        1 => {
+        DLL_PROCESS_ATTACH => {
             DLL_HINST.store(hinst, std::sync::atomic::Ordering::SeqCst);
         }
-        0 => {
+        DLL_PROCESS_DETACH => {
             if let Ok(mut guard) = text_service::IME_STATE.lock() {
                 *guard = None;
             }
@@ -193,7 +197,7 @@ pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
     if text_service::TEXT_SERVICE_COUNT.load(std::sync::atomic::Ordering::SeqCst) == 0 {
         S_OK
     } else {
-        1 // S_FALSE
+        S_FALSE
     }
 }
 

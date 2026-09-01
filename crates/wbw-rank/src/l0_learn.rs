@@ -31,6 +31,8 @@ pub struct L0Learner {
     counters: std::collections::HashMap<String, u32>,
 }
 
+const MAX_DATA_ENTRIES: usize = 10000;
+
 /// L0 快照数据结构（用于持久化）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct L0Snapshot {
@@ -78,6 +80,9 @@ impl L0Learner {
                 .as_secs(),
         };
 
+        if self.data.len() >= MAX_DATA_ENTRIES {
+            self.data.remove(0);
+        }
         self.data.push(entry);
     }
 

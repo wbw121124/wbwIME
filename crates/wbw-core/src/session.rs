@@ -2,7 +2,7 @@
 
 use crate::candidate::CandidateList;
 use crate::context::{ContextManager, ContextSnapshot};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use wbw_types::SessionConfig;
 
 /// 会话管理器
@@ -109,7 +109,7 @@ pub struct SessionState {
     /// 最后活动时间
     pub last_active: u64,
     /// 历史快照
-    pub snapshots: Vec<ContextSnapshot>,
+    pub snapshots: VecDeque<ContextSnapshot>,
 }
 
 impl SessionState {
@@ -127,7 +127,7 @@ impl SessionState {
             config,
             created_at: now,
             last_active: now,
-            snapshots: Vec::new(),
+            snapshots: VecDeque::new(),
         }
     }
 
@@ -142,11 +142,11 @@ impl SessionState {
     /// 保存快照
     pub fn save_snapshot(&mut self) {
         let snapshot = ContextSnapshot::from(self.context.current());
-        self.snapshots.push(snapshot);
+        self.snapshots.push_back(snapshot);
 
         // 限制快照数量
         if self.snapshots.len() > 50 {
-            self.snapshots.remove(0);
+            self.snapshots.pop_front();
         }
     }
 

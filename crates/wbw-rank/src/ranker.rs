@@ -46,12 +46,13 @@ impl Ranker {
     /// 排序候选词
     ///
     /// 按权重降序排列候选词。
-    pub fn rank(&self, candidates: Vec<Candidate>) -> Vec<Candidate> {
+    pub fn rank(&self, candidates: &[Candidate]) -> Vec<Candidate> {
         let start = Instant::now();
 
         // 计算权重
         let mut weighted: Vec<(Candidate, f64)> = candidates
-            .into_iter()
+            .iter()
+            .cloned()
             .map(|c| {
                 let weight = self.weight_calculator.calculate_weight(&c);
                 (c, weight)
@@ -59,7 +60,7 @@ impl Ranker {
             .collect();
 
         // 按权重降序排序
-        weighted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        weighted.sort_by(|a, b| b.1.total_cmp(&a.1));
 
         // 提取排序后的候选词
         let result: Vec<Candidate> = weighted.into_iter().map(|(c, _)| c).collect();
@@ -71,7 +72,7 @@ impl Ranker {
     /// 带上下文的排序
     ///
     /// 考虑上下文调整候选词权重。
-    pub fn rank_with_context(&self, candidates: Vec<Candidate>, context: &str) -> Vec<Candidate> {
+    pub fn rank_with_context(&self, candidates: &[Candidate], context: &str) -> Vec<Candidate> {
         let mut ranked = self.rank(candidates);
 
         // 如果有上下文，根据上下文调整权重
@@ -80,9 +81,7 @@ impl Ranker {
             ranked.sort_by(|a, b| {
                 let a_relevance = self.context_relevance(&a.text, context);
                 let b_relevance = self.context_relevance(&b.text, context);
-                b_relevance
-                    .partial_cmp(&a_relevance)
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                b_relevance.total_cmp(&a_relevance)
             });
         }
 
@@ -209,7 +208,7 @@ mod tests {
     fn test_rank() {
         let ranker = Ranker::new(RankConfig::default());
         let candidates = test_candidates();
-        let ranked = ranker.rank(candidates);
+        let ranked = ranker.rank(&candidates);
         assert_eq!(ranked.len(), 2);
     }
 
@@ -217,7 +216,7 @@ mod tests {
     fn test_rank_with_context() {
         let ranker = Ranker::new(RankConfig::default());
         let candidates = test_candidates();
-        let ranked = ranker.rank_with_context(candidates, "中国");
+        let ranked = ranker.rank_with_context(&candidates, "中国");
         assert_eq!(ranked.len(), 2);
     }
 

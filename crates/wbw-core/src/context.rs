@@ -1,6 +1,7 @@
 //! 输入上下文模块
 
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use wbw_types::{ImeResult, InputContext, InputMode};
 
 /// 上下文管理器
@@ -8,7 +9,7 @@ pub struct ContextManager {
     /// 当前上下文
     current: InputContext,
     /// 历史上下文
-    history: Vec<InputContext>,
+    history: VecDeque<InputContext>,
     /// 最大历史记录数
     max_history: usize,
 }
@@ -26,7 +27,7 @@ impl ContextManager {
 
         Self {
             current,
-            history: Vec::new(),
+            history: VecDeque::new(),
             max_history: 100,
         }
     }
@@ -59,12 +60,11 @@ impl ContextManager {
                 .map(|(i, _)| i)
                 .unwrap_or(0);
 
-            let _removed = self.current.buffer[prev_boundary..self.current.cursor].to_string();
+            let removed = self.current.buffer[prev_boundary..self.current.cursor].to_string();
             self.current.buffer.truncate(prev_boundary);
             self.current.cursor = prev_boundary;
 
-            // 返回被删除的字符（简化处理）
-            Some('_')
+            removed.chars().next()
         } else {
             None
         }
@@ -124,15 +124,15 @@ impl ContextManager {
 
     /// 保存历史记录
     fn save_history(&mut self) {
-        self.history.push(self.current.clone());
+        self.history.push_back(self.current.clone());
         if self.history.len() > self.max_history {
-            self.history.remove(0);
+            self.history.pop_front();
         }
     }
 
     /// 撤销操作
     pub fn undo(&mut self) -> bool {
-        if let Some(prev) = self.history.pop() {
+        if let Some(prev) = self.history.pop_back() {
             self.current = prev;
             true
         } else {
@@ -141,7 +141,7 @@ impl ContextManager {
     }
 
     /// 获取历史记录
-    pub fn history(&self) -> &[InputContext] {
+    pub fn history(&self) -> &VecDeque<InputContext> {
         &self.history
     }
 

@@ -5764,6 +5764,7 @@ dependencies = [
 name = "wbw-ngram"
 version = "0.1.0"
 dependencies = [
+ "smallvec",
  "thiserror 1.0.69",
  "wbw-types",
 ]

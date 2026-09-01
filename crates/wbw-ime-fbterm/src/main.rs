@@ -203,7 +203,7 @@ impl FbtermIme {
             session_id: 0,
         };
         let matched = self.matcher.match_input(&ctx);
-        self.candidates = self.ranker.rank(matched);
+        self.candidates = self.ranker.rank(&matched);
         self.selected_index = 0;
     }
 }
