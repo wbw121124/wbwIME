@@ -1,4 +1,5 @@
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use crate::guid::*;
 use crate::output::{HRESULT, S_OK, ULONG};
@@ -43,7 +44,7 @@ static CLASS_FACTORY_VTABLE: ClassFactoryVtable = ClassFactoryVtable {
 #[repr(C)]
 struct ClassFactory {
     lp_vtbl: *const ClassFactoryVtable, // ✅ snake_case
-    ref_count: i32,
+    ref_count: AtomicI32,
 }
 
 // ========== IClassFactory methods ==========
@@ -76,15 +77,13 @@ unsafe extern "system" fn cf_qi(
 }
 
 unsafe extern "system" fn cf_add_ref(this: *mut c_void) -> ULONG {
-    let f = unsafe { &mut *(this as *mut ClassFactory) };
-    f.ref_count += 1;
-    f.ref_count as ULONG
+    let f = unsafe { &*(this as *const ClassFactory) };
+    f.ref_count.fetch_add(1, Ordering::Relaxed) as ULONG + 1
 }
 
 unsafe extern "system" fn cf_release(this: *mut c_void) -> ULONG {
-    let f = unsafe { &mut *(this as *mut ClassFactory) };
-    f.ref_count -= 1;
-    let count = f.ref_count as ULONG;
+    let f = unsafe { &*(this as *const ClassFactory) };
+    let count = f.ref_count.fetch_sub(1, Ordering::Relaxed) as ULONG - 1;
     if count == 0 {
         unsafe {
             let _ = Box::from_raw(this as *mut ClassFactory);
@@ -179,7 +178,7 @@ pub unsafe extern "system" fn DllGetClassObject(
     }
     let factory = Box::into_raw(Box::new(ClassFactory {
         lp_vtbl: &CLASS_FACTORY_VTABLE,
-        ref_count: 1,
+        ref_count: AtomicI32::new(1),
     }));
     unsafe {
         *ppv = factory as *mut c_void;

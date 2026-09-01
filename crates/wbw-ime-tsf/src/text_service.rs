@@ -1,4 +1,5 @@
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT};
 
@@ -154,7 +155,7 @@ static KEY_EVENT_SINK_VTABLE: KeyEventSinkVtable = KeyEventSinkVtable {
 #[repr(C)]
 struct KeyEventSink {
     lp_vtbl: *const KeyEventSinkVtable,
-    ref_count: i32,
+    ref_count: AtomicI32,
 }
 
 unsafe impl Send for KeyEventSink {}
@@ -162,7 +163,7 @@ unsafe impl Sync for KeyEventSink {}
 
 static KEY_EVENT_SINK: KeyEventSink = KeyEventSink {
     lp_vtbl: &KEY_EVENT_SINK_VTABLE,
-    ref_count: 1,
+    ref_count: AtomicI32::new(1),
 };
 
 unsafe extern "system" fn ks_qi(
@@ -188,18 +189,13 @@ unsafe extern "system" fn ks_qi(
 }
 
 unsafe extern "system" fn ks_add_ref(this: *mut c_void) -> ULONG {
-    // ref_count 位于 lp_vtbl 之后（offset 4 on x64 is wrong - offset 8 on x64）
-    // #[repr(C)] struct KeyEventSink { lp_vtbl: *const Vtable (8 bytes), ref_count: i32 }
-    // ref_count 偏移 = size_of::<*const c_void>() / size_of::<i32>() = 2 (以 i32 单位)
-    let s = unsafe { &mut *(this as *mut KeyEventSink) };
-    s.ref_count += 1;
-    s.ref_count as ULONG
+    let s = unsafe { &*(this as *const KeyEventSink) };
+    s.ref_count.fetch_add(1, Ordering::Relaxed) as ULONG + 1
 }
 
 unsafe extern "system" fn ks_release(this: *mut c_void) -> ULONG {
-    let s = unsafe { &mut *(this as *mut KeyEventSink) };
-    s.ref_count -= 1;
-    s.ref_count as ULONG
+    let s = unsafe { &*(this as *const KeyEventSink) };
+    s.ref_count.fetch_sub(1, Ordering::Relaxed) as ULONG - 1
 }
 
 // ========== TextService COM ==========
@@ -241,7 +237,7 @@ static TEXT_SERVICE_VTABLE: TextServiceVtable = TextServiceVtable {
 #[repr(C)]
 pub struct TextService {
     lp_vtbl: *const TextServiceVtable,
-    pub ref_count: i32,
+    pub ref_count: AtomicI32,
     pub client_id: u32,
     pub thread_mgr: *mut c_void,
     pub key_sink: *mut c_void,
@@ -255,7 +251,7 @@ impl TextService {
         TEXT_SERVICE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Box::into_raw(Box::new(Self {
             lp_vtbl: &TEXT_SERVICE_VTABLE,
-            ref_count: 1,
+            ref_count: AtomicI32::new(1),
             client_id: 0,
             thread_mgr: std::ptr::null_mut(),
             key_sink: std::ptr::null_mut(),
@@ -305,15 +301,13 @@ unsafe extern "system" fn ts_qi(
 }
 
 pub(crate) unsafe extern "system" fn ts_add_ref(this: *mut c_void) -> ULONG {
-    let ts = unsafe { &mut *(this as *mut TextService) };
-    ts.ref_count += 1;
-    ts.ref_count as ULONG
+    let ts = unsafe { &*(this as *const TextService) };
+    ts.ref_count.fetch_add(1, Ordering::Relaxed) as ULONG + 1
 }
 
 unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
-    let ts = unsafe { &mut *(this as *mut TextService) };
-    ts.ref_count -= 1;
-    let count = ts.ref_count as ULONG;
+    let ts = unsafe { &*(this as *const TextService) };
+    let count = ts.ref_count.fetch_sub(1, Ordering::Relaxed) as ULONG - 1;
     if count == 0 {
         TEXT_SERVICE_COUNT.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         unsafe {

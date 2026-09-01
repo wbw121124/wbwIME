@@ -7,7 +7,7 @@ use std::num::NonZeroUsize;
 use std::time::Instant;
 use wbw_dict::entry::{DictEntry, DictSource};
 use wbw_dict::{CinParser, FstDict, FstDictBuilder};
-use wbw_types::{Candidate, CandidateSource, InputContext};
+use wbw_types::{Candidate, CandidateSource, ImeError, InputContext};
 
 /// 匹配器配置
 #[derive(Debug, Clone)]
@@ -118,23 +118,23 @@ impl Matcher {
     }
 
     /// 从 .cin 文件加载词典
-    pub fn load_cin(&mut self, path: &str) {
+    pub fn load_cin(&mut self, path: &str) -> Result<(), ImeError> {
         let parser = CinParser::new(path);
-        if let Ok(cin_entries) = parser.parse() {
-            let mut builder = FstDictBuilder::new();
-            for cin_entry in &cin_entries {
-                for word_entry in &cin_entry.words {
-                    builder.add_entry(DictEntry {
-                        code: cin_entry.code.clone(),
-                        word: word_entry.word.clone(),
-                        freq: word_entry.freq,
-                        source: DictSource::Base,
-                    });
-                }
+        let cin_entries = parser.parse()?;
+        let mut builder = FstDictBuilder::new();
+        for cin_entry in &cin_entries {
+            for word_entry in &cin_entry.words {
+                builder.add_entry(DictEntry {
+                    code: cin_entry.code.clone(),
+                    word: word_entry.word.clone(),
+                    freq: word_entry.freq,
+                    source: DictSource::Base,
+                });
             }
-            self.dict = Some(builder.build(DictSource::Base));
-            self.clear_cache();
         }
+        self.dict = Some(builder.build(DictSource::Base));
+        self.clear_cache();
+        Ok(())
     }
 
     /// 加载词典

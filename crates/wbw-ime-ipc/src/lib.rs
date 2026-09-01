@@ -59,7 +59,9 @@ pub mod frame {
             ));
         }
         let mut buf = vec![0u8; len];
-        read_exact_opt(reader, &mut buf)?;
+        if !read_exact_opt(reader, &mut buf)? {
+            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "eof mid-payload"));
+        }
         let value = serde_json::from_slice(&buf)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         Ok(Some(value))
@@ -69,6 +71,9 @@ pub mod frame {
     pub fn write<T: Serialize>(writer: &mut impl Write, value: &T) -> io::Result<()> {
         let buf = serde_json::to_vec(value)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        if buf.len() > 64 * 1024 * 1024 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "frame too large"));
+        }
         let len = (buf.len() as u32).to_le_bytes();
         writer.write_all(&len)?;
         writer.write_all(&buf)?;

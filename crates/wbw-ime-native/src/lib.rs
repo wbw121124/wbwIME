@@ -298,12 +298,9 @@ pub unsafe extern "C" fn wbw_ime_result_free(result: *mut WbwImeResult) {
         drop(CString::from_raw(result.confirmed_text));
     }
     if !result.candidates.is_null() && result.candidate_count > 0 {
-        let candidates = Vec::from_raw_parts(
-            result.candidates,
-            result.candidate_count as usize,
-            result.candidate_count as usize,
-        );
-        for c in candidates {
+        let slice = std::slice::from_raw_parts_mut(result.candidates, result.candidate_count as usize);
+        let boxed: Box<[WbwCandidate]> = Box::from_raw(slice);
+        for c in boxed.iter() {
             if !c.text.is_null() {
                 drop(CString::from_raw(c.text));
             }
@@ -350,7 +347,7 @@ unsafe fn convert_response(response: &ImeResponse, candidates: &[Candidate]) -> 
         .iter()
         .map(|c| WbwCandidate {
             text: CString::new(c.text.clone()).unwrap_or_default().into_raw(),
-            code: CString::new(String::new()).unwrap_or_default().into_raw(),
+            code: ptr::null_mut(),
             score: c.score,
         })
         .collect();

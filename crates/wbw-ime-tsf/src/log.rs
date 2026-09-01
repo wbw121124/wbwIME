@@ -20,16 +20,18 @@ fn log_path() -> &'static std::path::Path {
 }
 
 /// 缓存文件句柄（保持打开，避免每次按键都重新 open + flush）。
-fn log_file() -> &'static Mutex<std::fs::File> {
-    static FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
+/// 初始化失败时返回 None，禁用日志而非 panic。
+fn log_file() -> Option<&'static Mutex<std::fs::File>> {
+    static FILE: OnceLock<Option<Mutex<std::fs::File>>> = OnceLock::new();
     FILE.get_or_init(|| {
-        let f = std::fs::OpenOptions::new()
+        std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(log_path())
-            .expect("无法创建日志文件");
-        Mutex::new(f)
+            .ok()
+            .map(Mutex::new)
     })
+    .as_ref()
 }
 
 pub fn log(msg: &str) {
@@ -37,9 +39,11 @@ pub fn log(msg: &str) {
         return;
     }
     let pid = std::process::id();
-    if let Ok(mut f) = log_file().lock() {
-        let _ = writeln!(f, "[pid={pid}] {msg}");
-        let _ = f.flush();
+    if let Some(f) = log_file() {
+        if let Ok(mut guard) = f.lock() {
+            let _ = writeln!(guard, "[pid={pid}] {msg}");
+            let _ = guard.flush();
+        }
     }
 }
 

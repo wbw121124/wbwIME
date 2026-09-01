@@ -14,7 +14,8 @@ static INITIALS: &[&str] = &[
 /// 拼音韵母表
 static FINALS: &[&str] = &[
     "ang", "eng", "ing", "ong", "ian", "iang", "iong", "uan", "uang", "ueng", "iao", "iou", "uei",
-    "uen", "üan", "ün", "ai", "ei", "ao", "ou", "an", "en", "ia", "ie", "ua", "uo", "uai", "üe",
+    "uen", "üan", "ün", "iu", "ui", "un", "ai", "ei", "ao", "ou", "an", "en", "ia", "ie", "ua",
+    "uo", "uai", "üe",
     "a", "o", "e", "i", "u", "ü", "er",
 ];
 

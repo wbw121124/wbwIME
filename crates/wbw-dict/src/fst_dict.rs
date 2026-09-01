@@ -1,9 +1,8 @@
 //! FST 词典实现
 //!
-//! 基于 `fst::Map` 的压缩前缀词典，支持精确查询、前缀查询和模糊查询（Levenshtein automaton）。
-//! 支持序列化为二进制快照（`.fst` 文件）和 mmap 只读加载。
+//! 基于 `fst::Map` 的压缩前缀词典，支持精确查询、前缀查询和模糊查询（编辑距离）。
+//! 支持序列化为二进制快照（`.fst` 文件）和文件加载。
 
-use memmap2::Mmap;
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::fs::File;
@@ -59,16 +58,11 @@ impl FstDict {
         })
     }
 
-    /// 从文件 mmap 加载词典（只读映射，适合大词典）
+    /// 从文件加载词典
     pub fn from_file(path: &Path) -> ImeResult<Self> {
-        let file = File::open(path).map_err(|e| {
-            wbw_types::ImeError::IoError(format!("打开文件失败 {}: {}", path.display(), e))
+        let bytes = std::fs::read(path).map_err(|e| {
+            wbw_types::ImeError::IoError(format!("读取文件失败 {}: {}", path.display(), e))
         })?;
-        let mmap = unsafe {
-            Mmap::map(&file)
-                .map_err(|e| wbw_types::ImeError::IoError(format!("mmap 映射失败: {}", e)))?
-        };
-        let bytes = mmap.to_vec();
         let map = fst::Map::new(bytes)
             .map_err(|e| wbw_types::ImeError::ParseError(format!("FST 加载失败: {}", e)))?;
         let entry_count = map.len();
@@ -180,11 +174,11 @@ impl FstDict {
 
     /// 模糊查询：查找编辑距离在 max_edit_distance 以内的编码
     ///
-    /// 策略：先用 FST 前缀匹配缩小候选集（所有可能的 1-edit 变体前缀），
-    /// 再对候选词条的 code 部分做精确编辑距离过滤。
-    /// 对于小词典直接全表扫描也很快。
+    /// 注意：FST Levenshtein automaton 无法直接用于此场景，因为 key 格式为
+    /// `code + \x01 + word`，automaton 匹配完整 key 时 word 部分的字节会
+    /// 膨胀编辑距离，导致合法匹配被拒绝。因此采用流式全表扫描 + code 部分
+    /// 精确编辑距离过滤的策略。
     pub fn fuzzy_lookup(&self, code: &str, max_edit_distance: usize) -> Vec<(DictEntry, usize)> {
-        // 全表扫描 + 编辑距离过滤（FST map 不适合做分离式 code 模糊搜索）
         let mut results = Vec::new();
         let mut stream = self.map.stream();
         while let Some((key, freq)) = stream.next() {

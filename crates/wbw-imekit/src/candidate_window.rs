@@ -383,16 +383,19 @@ impl CandidateWindowManager {
     }
 
     /// 移除窗口
-    pub fn remove_window(&mut self, index: usize) -> bool {
-        if index < self.windows.len() {
-            self.windows.remove(index);
-            if self.active_window == Some(index) {
+    pub fn remove_window(&mut self, index: usize) -> Option<CandidateWindow> {
+        if index >= self.windows.len() {
+            return None;
+        }
+        let removed = self.windows.remove(index);
+        if let Some(active) = &mut self.active_window {
+            if index < *active {
+                *active -= 1;
+            } else if index == *active {
                 self.active_window = None;
             }
-            true
-        } else {
-            false
         }
+        Some(removed)
     }
 
     /// 获取窗口

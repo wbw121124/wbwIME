@@ -324,13 +324,14 @@ fn run_ime(stream: &mut UnixStream, ime: &mut FbtermIme) -> std::io::Result<()> 
                 }
             }
             MsgType::FbTermInfo => {
-                if payload.len() >= 12 {
-                    let info: FbTermInfoData = unsafe { std::mem::transmute_copy(&payload[0]) };
-                    let w = info.term_width;
-                    let h = info.term_height;
-                    let r = info.rotation;
-                    eprintln!("[fbterm] {}x{} rotation={}", w, h, r);
+                if payload.len() < std::mem::size_of::<FbTermInfoData>() {
+                    continue;
                 }
+                let info: FbTermInfoData = unsafe { std::ptr::read(payload.as_ptr() as *const FbTermInfoData) };
+                let w = info.term_width;
+                let h = info.term_height;
+                let r = info.rotation;
+                eprintln!("[fbterm] {}x{} rotation={}", w, h, r);
             }
             MsgType::HideUI => {
                 let _ = set_wins(stream, &[]);
