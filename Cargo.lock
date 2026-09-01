@@ -5709,6 +5709,7 @@ dependencies = [
  "wbw-matcher",
  "wbw-rank",
  "wbw-types",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

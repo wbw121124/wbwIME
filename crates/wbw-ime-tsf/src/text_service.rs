@@ -386,11 +386,12 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
     crate::log::log(&format!("ts_activate: thread_mgr tm={:p}", thread_mgr));
 
     // 拿不到 keystroke mgr 时：保留线程上下文供后续优先 TSF 输出（若可用），
-    // 但无按键 sink → 降级模式（调用方回退剪贴板）。
+    // 但无按键 sink → 降级模式：启动钩子兜底 GUI（自捕获键盘+剪贴板上屏）。
     if hr != S_OK || keystroke_mgr.is_null() {
-        crate::log::log("ts_activate: ITfKeystrokeMgr not available -> degraded, keep context");
+        crate::log::log("ts_activate: ITfKeystrokeMgr not available -> degraded, launch hook gui");
         ts.thread_mgr = thread_mgr;
         *TSF_CTX.lock().unwrap() = TsfContext { thread_mgr, client_id: ts.client_id };
+        crate::ipc::launch_hook_gui();
         return S_OK;
     }
 

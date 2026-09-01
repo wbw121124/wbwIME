@@ -23,3 +23,16 @@ wbw-ime-ipc = { path = "../wbw-ime-ipc" }
 serde = { workspace = true }
 serde_yaml = "0.9"
 slint = { version = "1" }
+
+[dependencies.windows-sys]
+version = "0.59"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+]

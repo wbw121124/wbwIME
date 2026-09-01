@@ -259,6 +259,138 @@ fn apply_ipc_show(ui: &CandidateWindow, msg: ToGui) {
     ui.window().show().ok();
 }
 
+/// 跟随光标定位窗口并应用到 UI 状态（钩子模式无 TSF 坐标可用）
+fn apply_state_cursor(ui: &CandidateWindow, state: GuiState) {
+    let was_before = ui.window().is_visible();
+    apply_state(ui, state.clone());
+    let show_now = ui.window().is_visible();
+    if show_now && (!was_before || state.visible) {
+        // 每次显示/组合变化都重新跟随鼠标光标
+        unsafe {
+            let mut pt: windows_sys::Win32::Foundation::POINT = std::mem::zeroed();
+            if windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt) != 0 {
+                ui.window().set_position(PhysicalPosition::new(pt.x as i32, pt.y as i32 + 2));
+            }
+        }
+    }
+}
+
+/// 待上屏文本（钩子线程提交，UI 线程异步粘贴）
+static PENDING_PASTE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 剪贴板 + 模拟 Ctrl+V 粘贴（须在钩子线程执行，避免影响 UI 事件循环）
+fn hook_paste(text: &str) {
+    unsafe {
+        use windows_sys::Win32::System::DataExchange::{
+            CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
+        };
+        use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock};
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            SendInput, INPUT, INPUT_0, KEYBDINPUT, KEYEVENTF_KEYUP,
+        };
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            return;
+        }
+        EmptyClipboard();
+        let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+        let size = wide.len() * 2;
+        let h_mem = GlobalAlloc(0x0002, size);
+        if !h_mem.is_null() {
+            let ptr = GlobalLock(h_mem) as *mut u16;
+            if !ptr.is_null() {
+                std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
+                GlobalUnlock(h_mem);
+                SetClipboardData(1, h_mem);
+            }
+        }
+        CloseClipboard();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let make_key = |vk: u16, scan: u16, flags: u32| INPUT {
+            r#type: 1,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: scan,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        let inputs = [
+            make_key(0x11, 0x1D, 0),
+            make_key(0x56, 0x2F, 0),
+            make_key(0x56, 0x2F, KEYEVENTF_KEYUP),
+            make_key(0x11, 0x1D, KEYEVENTF_KEYUP),
+        ];
+        SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+/// 钩子模式主入口：全局键盘钩子喂键给本地引擎，候选窗跟随光标，剪贴板上屏。
+fn run_hook_mode(config: &GuiConfig) {
+    let guard = match wbw_ime_gui::hook::acquire_single_instance() {
+        Some(g) => g,
+        None => {
+            // 已有实例，直接退出本进程
+            return;
+        }
+    };
+    let _guard = guard;
+
+    let engine = WbwIme::new(config.clone(), config.page_size);
+    *ENGINE.lock().unwrap() = Some(engine);
+
+    let ui: Rc<CandidateWindow> = CandidateWindow::new().unwrap().into();
+    apply_config(&ui, config);
+
+    // 鼠标：选候选 / 翻页（复用引擎，缓解钩子线程锁竞争）
+    let ui2 = ui.clone();
+    ui.on_item_clicked(move |idx| handle_item_click(idx, &ui2));
+    let ui3 = ui.clone();
+    ui.on_prev_page(move || handle_key(33, None, &ui3));
+    let ui4 = ui.clone();
+    ui.on_next_page(move || handle_key(34, None, &ui4));
+
+    // 钩子线程 → UI 线程的回传通道
+    let (tx, rx) = mpsc::channel::<GuiState>();
+    let tx2 = tx.clone();
+    wbw_ime_gui::hook::start(Box::new(move |code, ch| {
+        let state = {
+            let mut guard = match ENGINE.lock() {
+                Ok(g) => g,
+                Err(_) => return GuiState::default(),
+            };
+            match guard.as_mut() {
+                Some(e) => e.process_key(code, ch),
+                None => return GuiState::default(),
+            }
+        };
+        if let Some(text) = state.committed.as_ref() {
+            if !text.is_empty() {
+                *PENDING_PASTE.lock().unwrap() = Some(text.clone());
+            }
+        }
+        let _ = tx2.send(state.clone());
+        state
+    }));
+
+    // 每 10ms 排空钩子回传，应用 UI 状态，并异步粘贴待上屏文本
+    let ui_timer = ui.clone();
+    let timer = slint::Timer::default();
+    timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(10), move || {
+        while let Ok(state) = rx.try_recv() {
+            apply_state_cursor(&ui_timer, state);
+        }
+        if let Some(text) = PENDING_PASTE.lock().unwrap().take() {
+            hook_paste(&text);
+        }
+    });
+
+    ui.window().hide().ok();
+    slint::run_event_loop_until_quit().unwrap();
+}
+
 /// IPC 模式主入口：监听 DLL，仅显示 + 点击回传，键盘由 DLL 处理。
 fn run_ipc_mode(config: &GuiConfig) {
     let ui: Rc<CandidateWindow> = CandidateWindow::new().unwrap().into();
@@ -296,7 +428,12 @@ fn run_ipc_mode(config: &GuiConfig) {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let ipc_mode = args.iter().any(|a| a == "--ipc");
-    let non_flag: Vec<String> = args.iter().filter(|a| *a != "--ipc").cloned().collect();
+    let hook_mode = args.iter().any(|a| a == "--hook");
+    let non_flag: Vec<String> = args
+        .iter()
+        .filter(|a| *a != "--ipc" && *a != "--hook")
+        .cloned()
+        .collect();
     let config_path = non_flag
         .get(1)
         .cloned()
@@ -304,6 +441,11 @@ fn main() {
     let page_size_arg: Option<usize> = non_flag.get(2).and_then(|s| s.parse().ok());
 
     let config = GuiConfig::from_file(&config_path);
+
+    if hook_mode {
+        run_hook_mode(&config);
+        return;
+    }
 
     if ipc_mode {
         run_ipc_mode(&config);

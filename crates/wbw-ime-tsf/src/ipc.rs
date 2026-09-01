@@ -108,6 +108,31 @@ fn ensure_connected() -> bool {
     false
 }
 
+/// 是否已尝试启动钩子兜底 GUI（每进程一次）。
+static HOOK_LAUNCHED: AtomicBool = AtomicBool::new(false);
+
+/// 启动钩子兜底模式 GUI（`--hook`，自行捕获键盘+上屏，无需 TSF 按键通道）。
+/// 仅当 `ITfKeystrokeMgr` 不可用时由调用方触发；单实例由 GUI 侧命名 Mutex 保证。
+pub fn launch_hook_gui() {
+    if HOOK_LAUNCHED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let Some(exe) = gui_exe_path() else {
+        crate::log::log("launch_hook_gui: no gui exe");
+        return;
+    };
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.arg("--hook");
+    if let Some(dir) = exe.parent() {
+        let cfg = dir.join("gui-config.yaml");
+        if cfg.exists() {
+            cmd.arg(cfg.to_string_lossy().to_string());
+        }
+    }
+    crate::log::log(&format!("launch_hook_gui: spawn {}", exe.display()));
+    let _ = cmd.spawn();
+}
+
 /// 启动后台线程读取 GUI 点击回传。
 fn spawn_reader(stream: TcpStream) {
     if READER_RUNNING.swap(true, Ordering::SeqCst) {

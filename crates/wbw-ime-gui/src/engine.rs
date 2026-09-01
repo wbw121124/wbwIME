@@ -42,6 +42,8 @@ pub struct WbwIme {
     matcher: Matcher,
     ranker: Ranker,
     config: GuiConfig,
+    /// 最近一次确认上屏的文本（`snapshot` 读取后清空，供调用方上屏）。
+    pending_commit: Option<String>,
 }
 
 impl WbwIme {
@@ -51,8 +53,8 @@ impl WbwIme {
         // 每页候选词数量限制在 1-10
         config.page_size = page_size.clamp(1, 10);
 
-        // 加载词典
-        let dict = load_dict(&config.dict_path).unwrap_or_default_fst();
+        // 加载词典（解析兜底路径）
+        let dict = load_dict(&resolve_dict_path(&config.dict_path)).unwrap_or_default_fst();
 
         let matcher_config = MatcherConfig {
             fuzzy_enabled: config.behavior.fuzzy_enabled,
@@ -87,6 +89,7 @@ impl WbwIme {
             matcher,
             ranker,
             config,
+            pending_commit: None,
         }
     }
 
@@ -174,6 +177,12 @@ impl WbwIme {
                 self.refresh_candidates();
             }
             ImeResponseType::Confirm => {
+                // 记录确认上屏的文本（供 hook 模式剪贴板上屏）
+                if let Some(text) = response.text.as_ref() {
+                    if !text.is_empty() {
+                        self.pending_commit = Some(text.clone());
+                    }
+                }
                 // 不论由 confirm 还是 select_candidate 触发，确认后清空缓冲并复位状态
                 self.host.reset();
                 self.host.window_manager_mut().active_window_mut().map(|w| w.hide());
@@ -215,7 +224,7 @@ impl WbwIme {
     }
 
     /// 生成当前 UI 状态快照
-    fn snapshot(&self) -> GuiState {
+    fn snapshot(&mut self) -> GuiState {
         let window = self.host.window_manager().active_window();
         let selected_index = window.map(|w| w.selected_index()).unwrap_or(0);
         let page = window.map(|w| w.page()).unwrap_or(0);
@@ -232,7 +241,7 @@ impl WbwIme {
             page,
             total_pages,
             visible,
-            committed: None,
+            committed: self.pending_commit.take(),
         }
     }
 
@@ -269,6 +278,29 @@ fn load_dict(path: &str) -> Result<FstDict, String> {
             Ok(builder.build_fst())
         }
     }
+}
+
+/// 解析词典实际路径：优先配置相对路径；相对路径不存在时回退到
+/// 可执行文件附近的 `dicts/base.cin`（安装布局）或
+/// `../resources/dicts/base.cin`（仓库 target/release 布局）。
+fn resolve_dict_path(configured: &str) -> String {
+    if Path::new(configured).exists() {
+        return configured.to_string();
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidates = [
+                dir.join("dicts").join("base.cin"),
+                dir.parent().unwrap_or(dir).join("resources").join("dicts").join("base.cin"),
+            ];
+            for c in &candidates {
+                if c.exists() {
+                    return c.to_string_lossy().into_owned();
+                }
+            }
+        }
+    }
+    configured.to_string()
 }
 
 /// 将 GUI 配置翻译为 imekit 的 WindowStyle（供 confirm/select 协同使用）
