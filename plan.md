@@ -322,3 +322,107 @@ pub struct WbwIme {
 2. `cargo test --workspace` — config/engine 单元测试全过
 3. `cargo run -p wbw-ime-gui --bin wbw-ime-gui -- resources/gui-config.yaml` — GUI：输拼音 → 候选出现 → 数字/空格选词 → 翻页（本机需可用的窗口系统）
 4. 冒烟：release 版启动 6 秒不崩溃即通过初始化（窗口初始隐藏）
+
+---
+
+## 代码审查报告（2026-09-01）
+
+### 严重问题（10个）
+
+| # | 问题 | 位置 | 描述 |
+|---|------|------|------|
+| 1 | COM引用计数非原子操作 | `tsf/text_service.rs:190-203,307-324`, `dll.rs:78-94` | `ref_count` 使用普通 `i32`，多线程访问可能导致 use-after-free |
+| 2 | DLL内`expect`导致宿主崩溃 | `tsf/log.rs:30` | `OnceLock`初始化中`expect`在DLL注入场景会panic宿主进程 |
+| 3 | mmap后立即`to_vec()` | `wbw-dict/fst_dict.rs:63-82` | 完全失去mmap零拷贝优势，同时引入unsafe |
+| 4 | `fuzzy_lookup`全表扫描 | `wbw-dict/fst_dict.rs:186-212` | FST支持Levenshtein automaton但未使用，性能O(n) |
+| 5 | `load_cin`静默吞错误 | `wbw-matcher/matcher.rs:121-137` | 解析失败无提示，调用方无感知 |
+| 6 | 拼音省略形式分解错误 | `wbw-matcher/pinyin.rs:15-19` | `iu/ui/un`不在FINALS表中，导致声母分解错误 |
+| 7 | IPC载荷EOF检查遗漏 | `wbw-ime-ipc/lib.rs:62` | 载荷读取不检查EOF，可能得到全零缓冲区 |
+| 8 | `remove_window`索引失效 | `wbw-imekit/candidate_window.rs:386-396` | 移除窗口后`active_window`索引未修正 |
+| 9 | `Vec::from_raw_parts`匹配不严格 | `wbw-ime-native/lib.rs:301-304` | 释放方式与分配方式不严格匹配 |
+| 10 | `transmute_copy`解析协议数据 | `wbw-ime-fbterm/main.rs:328` | 从`&u8`读取可能越界 |
+
+### 中等问题（25个）
+
+| # | 问题 | 位置 |
+|---|------|------|
+| 11 | `NgramTable`查询每次分配`Vec<String>` | `wbw-ngram/table.rs:59-93` |
+| 12 | Laplace平滑与SmoothConfig配置脱节 | `wbw-ngram/table.rs:74-84` |
+| 13 | Good-Turing平滑实际回退到Laplace | `wbw-ngram/smooth.rs:99` |
+| 14 | `pop_char`返回硬编码`'_'`而非实际字符 | `wbw-ngram/context.rs:67` |
+| 15 | `save_history`用`Vec::remove(0)` O(n)删除 | `wbw-ngram/context.rs:128-130` |
+| 16 | `match_input`忽略光标位置 | `wbw-matcher/matcher.rs:149-175` |
+| 17 | `generate_variants`组合爆炸风险 | `wbw-matcher/fuzzy.rs:124-165` |
+| 18 | 缓存命中整列表克隆 | `wbw-matcher/matcher.rs:156-159` |
+| 19 | `f64`比较未用`total_cmp` | `wbw-rank/config.rs:261-264` |
+| 20 | `L0Learner`无数据上限 | `wbw-rank/l0_learn.rs:29,81` |
+| 21 | `rank`方法不必要消耗`Vec` | `wbw-rank/ranker.rs:49` |
+| 22 | `rank_with_context`二次排序覆盖权重排序 | `wbw-rank/ranker.rs:74-89` |
+| 23 | `mode`与`config.input_mode`双重状态 | `wbw-imekit/ime_host.rs:83-84,372-376` |
+| 24 | `select_candidate`未清理buffer | `wbw-imekit/ime_host.rs:258-289` |
+| 25 | 按键映射忽略修饰键 | `wbw-imekit/key_mapper.rs:243-255` |
+| 26 | `frame::write`无帧大小检查 | `wbw-ime-ipc/lib.rs:72` |
+| 27 | 硬编码端口号45123冲突风险 | `wbw-ime-ipc/lib.rs:16` |
+| 28 | IPC无心跳/重连机制 | `wbw-ime-ipc/lib.rs` |
+| 29 | 大量`transmute`用于COM vtable派发 | `tsf/output.rs`, `text_service.rs` |
+| 30 | `Mutex::lock().unwrap()`多处使用 | `tsf/`, `gui/` |
+| 31 | `ENGINE.lock().unwrap()`在GUI事件回调 | `wbw-ime-gui/main.rs:112,316` |
+| 32 | 临时SVG文件无清理机制 | `wbw-ime-gui/main.rs:138-144` |
+| 33 | `wbw_ime_input_text`不更新ImeHost状态 | `wbw-ime-native/lib.rs:176-220` |
+| 34 | `from_entries`大量`expect`而非返回Result | `wbw-dict/fst_dict.rs:99,104,105` |
+| 35 | `parse_multiple`不去重不合并 | `wbw-dict/cin_parser.rs:271-281` |
+
+### 轻微问题（30+个）
+
+包括：缺少`#[non_exhaustive]`、`serde(default)`缺失、死代码（未使用的类型/函数）、magic number未命名、测试覆盖不足、文档缺失等。
+
+---
+
+## 修复计划
+
+### 第1批：严重问题（立即修复）
+
+**1. COM引用计数原子化** — `tsf/text_service.rs`, `dll.rs`
+- 将 `ref_count: i32` 改为 `AtomicI32`
+- `ks_add_ref`/`ks_release`/`ts_add_ref`/`ts_release`/`cf_add_ref`/`cf_release` 使用 `fetch_add`/`fetch_sub`
+
+**2. DLL内expect/unwrap消除** — `tsf/log.rs`
+- `log_file()` 中 `expect` 改为降级处理（禁用日志）
+- 统一 `Mutex::lock()` 错误处理，消除所有 `unwrap()`
+
+**3. mmap修复** — `wbw-dict/fst_dict.rs`
+- 方案A：持久持有 `Mmap` 对象（推荐）
+- 方案B：直接用 `fs::read` 替代
+
+**4. fuzzy_lookup优化** — `wbw-dict/fst_dict.rs`
+- 使用 `fst::Set` 的 `search(automaton)` 方法
+- 构建 Levenshtein automaton 利用FST前缀树
+
+**5. load_cin返回Result** — `wbw-matcher/matcher.rs`
+- 改为 `pub fn load_cin(&mut self, path: &str) -> Result<(), ImeError>`
+
+**6. 拼音FINALS表修正** — `wbw-matcher/pinyin.rs`
+- 添加 `"iu"`, `"ui"`, `"un"` 到FINALS表
+
+**7. IPC EOF检查** — `wbw-ime-ipc/lib.rs`
+- `frame::read` 中检查载荷读取的返回值
+- `frame::write` 添加帧大小限制
+
+**8. remove_window索引修正** — `wbw-imekit/candidate_window.rs`
+- 移除窗口后修正 `active_window` 索引
+
+**9. Vec::from_raw_parts安全化** — `wbw-ime-native/lib.rs`
+- 改用 `Box::from_raw(slice)` 释放
+- `code` 字段使用 `ptr::null_mut()`
+
+**10. FBTerm transmute_copy修复** — `wbw-ime-fbterm/main.rs`
+- 使用 `std::ptr::read` 替代
+- 添加边界检查
+
+### 第2批：中等问题（高优先级）
+
+**11-35.** 包括：NgramTable查询优化、Good-Turing平滑处理、pop_char返回实际字符、VecDeque替代Vec、match_input处理光标、generate_variants限制、缓存命中返回引用、f64 NaN处理、L0Learner数据上限、rank方法改为引用、mode双重状态修复、select_candidate清理buffer、按键映射支持修饰键、frame::write大小检查、DLL magic number常量化等。
+
+### 第3批：轻微问题（低优先级）
+
+**36+.** 包括：`#[non_exhaustive]`添加、`serde(default)`添加、死代码清理、magic number常量化、文档补充、测试补充、性能基准实现等。
