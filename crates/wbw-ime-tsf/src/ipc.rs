@@ -168,6 +168,14 @@ fn handle_to_dll(msg: ToDll) {
                 crate::output::clipboard_paste(&text);
             }
         }
+        ToDll::ToggleMode => {
+            if let Ok(mut guard) = crate::text_service::IME_STATE.lock() {
+                if let Some(state) = guard.as_mut() {
+                    state.toggle_chinese();
+                }
+            }
+            refresh_gui();
+        }
         ToDll::PageUp | ToDll::PageDown => {
             let changed = {
                 let mut guard = match crate::text_service::IME_STATE.lock() {
@@ -235,6 +243,7 @@ pub fn refresh_gui() {
                 total_pages: state.total_pages(),
                 x,
                 y,
+                mode: if state.chinese_mode { "中".into() } else { "英".into() },
             }
         }
     };

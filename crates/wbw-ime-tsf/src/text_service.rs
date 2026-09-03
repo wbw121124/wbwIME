@@ -442,7 +442,7 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
     let sink = std::ptr::addr_of!(KEY_EVENT_SINK) as *mut c_void;
     ts.key_sink = sink;
     crate::log::log("ts_activate: before AdviseKeyEventSink");
-    let hr = unsafe { advise_key_sink(keystroke_mgr, ts.client_id, sink, 1) };
+    let hr = unsafe { advise_key_sink(keystroke_mgr, ts.client_id, sink, 0) };
     crate::log::log(&format!("ts_activate: AdviseKeyEventSink hr=0x{:08X}", hr as u32));
 
     unsafe {
@@ -535,28 +535,69 @@ unsafe extern "system" fn ks_test_key_down(
 
     let vkey = w_param & 0xFF;
 
-    // 有 Ctrl/Alt/Shift 修饰键时不拦截——让快捷键（Ctrl+A/C/V 等）正常工作。
-    // 仅在纯字母键且无修饰键时才考虑拦截。
+    // 修饰键组合（Ctrl 或 Alt）始终透传，最高优先级
     let ctrl = (GetKeyState(VK_CONTROL.into()) as u16 & 0x8000) != 0;
     let alt = (GetKeyState(VK_MENU.into()) as u16 & 0x8000) != 0;
-    let shift = (GetKeyState(VK_SHIFT.into()) as u16 & 0x8000) != 0;
     if ctrl || alt {
         return S_OK;
     }
 
-    let mut state = match IME_STATE.lock() {
+    // Shift 单击（vkey==0x10 且非 composing）：吃掉，由 ks_key_down 处理切换
+    if vkey == 0x10 {
+        let state = match IME_STATE.lock() {
+            Ok(s) => s,
+            Err(_) => return S_OK,
+        };
+        let state = match state.as_ref() {
+            Some(s) => s,
+            None => return S_OK,
+        };
+        if !state.composing {
+            unsafe {
+                *pf_eaten = 1;
+            }
+        }
+        return S_OK;
+    }
+
+    let state = match IME_STATE.lock() {
         Ok(s) => s,
         Err(_) => return S_OK,
     };
-    let state = match state.as_mut() {
+    let state = match state.as_ref() {
         Some(s) => s,
         None => return S_OK,
     };
-    if state.composing || (!shift && (0x41..=0x5A).contains(&vkey)) {
-        unsafe {
-            *pf_eaten = 1;
+
+    // 英文模式 + 非 composing：字母键透传
+    if !state.chinese_mode && !state.composing {
+        if (0x41..=0x5A).contains(&vkey) {
+            return S_OK;
         }
     }
+
+    // composing 时：只吃 process_key 实际处理的键
+    if state.composing {
+        let eaten = matches!(
+            vkey,
+            0x41..=0x5A   // A-Z
+            | 0x30..=0x39 // 主键盘数字 0-9
+            | 0x60..=0x69 // 小键盘数字 0-9
+            | 0x08        // Backspace
+            | 0x20        // Space
+            | 0x0D        // Enter
+            | 0x1B        // Esc
+            | 0x25..=0x28 // 方向键
+            | 0x21        // PageUp
+            | 0x22        // PageDown
+        );
+        if eaten {
+            unsafe {
+                *pf_eaten = 1;
+            }
+        }
+    }
+
     S_OK
 }
 
@@ -585,6 +626,43 @@ unsafe extern "system" fn ks_key_down(
         *pf_eaten = 0;
     }
 
+    let vkey = w_param & 0xFF;
+
+    // 修饰键组合（Ctrl 或 Alt）：透传，若正在 composing 则重置
+    let ctrl = (GetKeyState(VK_CONTROL.into()) as u16 & 0x8000) != 0;
+    let alt = (GetKeyState(VK_MENU.into()) as u16 & 0x8000) != 0;
+    if ctrl || alt {
+        let mut guard = match IME_STATE.lock() {
+            Ok(s) => s,
+            Err(_) => return S_OK,
+        };
+        if let Some(state) = guard.as_mut() {
+            if state.composing {
+                state.reset_composing_ext();
+            }
+        }
+        return S_OK;
+    }
+
+    // Shift 单击（vkey==0x10 且非 composing）：切换中英文模式
+    let shift = (GetKeyState(VK_SHIFT.into()) as u16 & 0x8000) != 0;
+    if vkey == 0x10 && !shift {
+        let mut guard = match IME_STATE.lock() {
+            Ok(s) => s,
+            Err(_) => return S_OK,
+        };
+        if let Some(state) = guard.as_mut() {
+            if !state.composing {
+                state.toggle_chinese();
+                unsafe {
+                    *pf_eaten = 1;
+                }
+            }
+        }
+        crate::ipc::refresh_gui();
+        return S_OK;
+    }
+
     let commit_text = {
         let mut guard = match IME_STATE.lock() {
             Ok(s) => s,
@@ -594,7 +672,14 @@ unsafe extern "system" fn ks_key_down(
             Some(s) => s,
             None => return S_OK,
         };
-        let vkey = w_param & 0xFF;
+
+        // 英文模式 + 非 composing：字母键透传
+        if !state.chinese_mode && !state.composing {
+            if (0x41..=0x5A).contains(&vkey) {
+                return S_OK;
+            }
+        }
+
         state.process_key(vkey);
         if state.commit_text.is_some() {
             unsafe {

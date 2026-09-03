@@ -10,6 +10,7 @@ pub struct ImeState {
     pub ranker: Ranker,
     pub buffer: String,
     pub composing: bool,
+    pub chinese_mode: bool,
     /// 当前页候选词（供显示与数字选词）。
     pub candidates: Vec<Candidate>,
     /// 当前缓冲区完整候选词（供翻页）。
@@ -48,6 +49,7 @@ impl ImeState {
             ranker,
             buffer: String::new(),
             composing: false,
+            chinese_mode: true,
             candidates: Vec::new(),
             all_candidates: Vec::new(),
             page: 0,
@@ -139,8 +141,25 @@ impl ImeState {
         self.composing_text.clear();
     }
 
+    pub fn toggle_chinese(&mut self) {
+        self.chinese_mode = !self.chinese_mode;
+        self.reset_composing();
+    }
+
+    /// 公开的组合重置入口（供外部 ks_key_down 在修饰键按下时调用）。
+    pub fn reset_composing_ext(&mut self) {
+        self.reset_composing();
+    }
+
     pub fn process_key(&mut self, vkey: u32) {
         self.commit_text = None;
+
+        // 修饰键（Ctrl/Alt）按下时，若正在 composing 则重置并透传
+        if (vkey == 0x11 || vkey == 0x12) && self.composing {
+            self.reset_composing();
+            return;
+        }
+
         match vkey {
             0x0D => {
                 // Enter
@@ -180,21 +199,25 @@ impl ImeState {
                     self.next_page();
                 }
             }
-            0x31..=0x39 => {
-                let idx = (vkey - 0x31) as usize;
-                if !self.buffer.is_empty() && idx < self.candidates.len() {
-                    self.commit_text = Some(self.candidates[idx].text.clone());
-                    self.reset_composing();
-                }
-            }
-            0x30 => {
+            0x30 | 0x60 => {
                 if !self.buffer.is_empty() && self.candidates.len() > 9 {
                     self.commit_text = Some(self.candidates[9].text.clone());
                     self.reset_composing();
                 }
             }
+            0x31..=0x39 | 0x61..=0x69 => {
+                let idx = ((vkey & 0x0F) - 1) as usize;
+                if !self.buffer.is_empty() && idx < self.candidates.len() {
+                    self.commit_text = Some(self.candidates[idx].text.clone());
+                    self.reset_composing();
+                }
+            }
             0x41..=0x5A => {
                 // A-Z
+                if !self.chinese_mode && !self.composing {
+                    // 英文模式且未在组合中：字母键透传
+                    return;
+                }
                 self.buffer.push((vkey as u8 + 0x20) as char);
                 self.update_candidates();
                 self.composing = true;

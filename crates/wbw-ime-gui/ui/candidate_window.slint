@@ -50,6 +50,7 @@ export component CandidateWindow inherits Window {
     in property <bool> pagination-visible;
     in property <bool> show-index;
     in property <bool> vertical-layout;
+    in property <string> input-mode;
 
     // —— 回调（由 Rust 实现）——
     callback item-clicked(int);
@@ -122,14 +123,31 @@ export component CandidateWindow inherits Window {
                 background: buffer-background;
                 height: buffer-height;
                 border-radius: 2px;
-                Text {
-                    text: buffer;
-                    color: buffer-text;
-                    font-size: buffer-font-size;
-                    font-family: font-family;
-                    horizontal-stretch: 1;
-                    horizontal-alignment: left;
-                    vertical-alignment: center;
+                HorizontalLayout {
+                    // 模式指示器
+                    Rectangle {
+                        width: 24px;
+                        background: input-mode == "中" ? #0078D4 : #CCCCCC;
+                        border-radius: 2px;
+                        Text {
+                            text: input-mode;
+                            color: input-mode == "中" ? #FFFFFF : #333333;
+                            font-size: 12px;
+                            font-family: font-family;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                    // 缓冲文本
+                    Text {
+                        text: buffer;
+                        color: buffer-text;
+                        font-size: buffer-font-size;
+                        font-family: font-family;
+                        horizontal-stretch: 1;
+                        horizontal-alignment: left;
+                        vertical-alignment: center;
+                    }
                 }
             }
 

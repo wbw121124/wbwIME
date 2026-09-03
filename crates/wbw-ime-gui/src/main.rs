@@ -101,6 +101,7 @@ fn apply_state(ui: &CandidateWindow, state: GuiState) {
     ui.set_selected_index(state.selected_index as i32);
     ui.set_page(state.page as i32);
     ui.set_total_pages(state.total_pages as i32);
+    ui.set_input_mode(state.mode.as_str().into());
 
     if state.visible {
         ui.window().show().ok();
@@ -233,8 +234,52 @@ fn apply_config(ui: &CandidateWindow, config: &GuiConfig) {
     });
 }
 
+/// 估算文本像素宽度（CJK 字符≈字号，ASCII 字符≈0.55×字号）
+fn estimate_text_width(text: &str, font_size: f32) -> f32 {
+    let mut width = 0.0f32;
+    for ch in text.chars() {
+        if ch.is_ascii() {
+            width += font_size * 0.55;
+        } else {
+            // CJK 字符或其它非 ASCII 字符
+            width += font_size;
+        }
+    }
+    width
+}
+
+/// 根据缓冲和候选词估算窗口宽度
+fn calc_window_width(config: &GuiConfig, buffer: &str, candidates: &[String]) -> f32 {
+    let padding = config.window.padding as f32 * 2.0;
+    let mode_indicator_width = 24.0; // 模式指示器宽度
+    let spacing = config.candidate_bar.spacing as f32;
+
+    // 缓冲栏宽度 = 模式指示器 + 缓冲文本
+    let buffer_text_width = estimate_text_width(buffer, config.buffer_bar.font_size as f32);
+    let buffer_width = mode_indicator_width + buffer_text_width;
+
+    // 候选栏宽度
+    let item_font_size = config.candidate_item.font_size as f32;
+    let mut candidates_width = 0.0f32;
+    for (i, candidate) in candidates.iter().enumerate() {
+        let idx_width = if config.candidate_item.show_index {
+            estimate_text_width(&(i + 1).to_string(), item_font_size) + estimate_text_width(". ", item_font_size)
+        } else {
+            0.0
+        };
+        candidates_width += idx_width + estimate_text_width(candidate, item_font_size);
+        if i < candidates.len() - 1 {
+            candidates_width += spacing;
+        }
+    }
+
+    // 取缓冲栏和候选栏中较宽的
+    let content_width = buffer_width.max(candidates_width);
+    (content_width + padding).max(100.0) // 最小宽度 100px
+}
+
 /// 将 IPC 下发的 Show 消息应用到窗口并定位到光标屏幕坐标
-fn apply_ipc_show(ui: &CandidateWindow, msg: ToGui) {
+fn apply_ipc_show(ui: &CandidateWindow, msg: ToGui, config: &GuiConfig) {
     let ToGui::Show {
         buffer,
         candidates,
@@ -243,6 +288,7 @@ fn apply_ipc_show(ui: &CandidateWindow, msg: ToGui) {
         total_pages,
         x,
         y,
+        mode,
     } = msg
     else {
         return;
@@ -255,6 +301,12 @@ fn apply_ipc_show(ui: &CandidateWindow, msg: ToGui) {
     ui.set_selected_index(selected as i32);
     ui.set_page(page as i32);
     ui.set_total_pages(total_pages as i32);
+    ui.set_input_mode(mode.as_str().into());
+
+    // 动态计算窗口宽度
+    let width = calc_window_width(config, &buffer, &candidates);
+    let height = ui.window().size().height;
+    ui.window().set_size(slint::LogicalSize::new(width, height as f32));
 
     // 窗口左上角定位在光标下方（该坐标为 TSF GetScreenCoords 给出的物理像素）
     ui.window().set_position(PhysicalPosition::new(x, y + 2));
@@ -427,11 +479,12 @@ fn run_ipc_mode(config: &GuiConfig) {
 
     // UI 线程定时排空通道并应用状态
     let ui_timer = ui.clone();
+    let config_timer = config.clone();
     let timer = slint::Timer::default();
     timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(10), move || {
         while let Ok(msg) = rx.try_recv() {
             match msg {
-                ToGui::Show { .. } => apply_ipc_show(&ui_timer, msg),
+                ToGui::Show { .. } => apply_ipc_show(&ui_timer, msg, &config_timer),
                 ToGui::Hide => {
                     ui_timer.window().hide().ok();
                 }

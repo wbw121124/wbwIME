@@ -7,17 +7,17 @@
 //! 键位门控：仅当前台线程键盘布局为中文（`LANG_CHINESE`）时接管字母/数字/功能键，
 //! 避免在英文布局下吞掉正常输入。
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Mutex, OnceLock};
 
 use windows_sys::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS, HWND, LRESULT, LPARAM, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Threading::CreateMutexW;
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetKeyboardLayout;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
-    KBDLLHOOKSTRUCT, SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, HHOOK, HC_ACTION,
-    LLKHF_INJECTED, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_QUIT,
+    CallNextHookEx, DispatchMessageW, GetMessageW, KBDLLHOOKSTRUCT, SetWindowsHookExW,
+    TranslateMessage, UnhookWindowsHookEx, HHOOK, HC_ACTION, LLKHF_INJECTED, MSG, WH_KEYBOARD_LL,
+    WM_KEYDOWN, WM_KEYUP, WM_QUIT,
 };
 
 use crate::engine::GuiState;
@@ -35,6 +35,14 @@ const VK_LEFT: u32 = 0x25;
 const VK_UP: u32 = 0x26;
 const VK_RIGHT: u32 = 0x27;
 const VK_DOWN: u32 = 0x28;
+const VK_SHIFT: u32 = 0x10;
+const VK_CONTROL: u32 = 0x11;
+const VK_MENU: u32 = 0x12;
+const VK_NUMPAD0: u32 = 0x60;
+const VK_NUMPAD9: u32 = 0x69;
+
+/// 中文模式开关（Shift 键切换）。true = 中文模式，false = 英文模式。
+static CHINESE_MODE: AtomicBool = AtomicBool::new(true);
 
 /// 每个候选窗回调：处理一次按键，返回本次状态（供 UI 线程应用 + 决定是否吞键）。
 type KeyHandler = Box<dyn Fn(u32, Option<char>) -> GuiState + Send + Sync>;
@@ -108,6 +116,21 @@ unsafe extern "system" fn ll_keyboard_proc(code: i32, wparam: WPARAM, lparam: LP
 
         match wparam as u32 {
             WM_KEYDOWN => {
+                let vkey = info.vkCode;
+                // Ctrl / Alt 不拦截，透传给应用
+                if vkey == VK_CONTROL || vkey == VK_MENU {
+                    return CallNextHookEx(HHOOK::default(), code, wparam, lparam);
+                }
+                // Shift 键切换中文模式（composing 时不切换）
+                if vkey == VK_SHIFT {
+                    let eating = !EATEN_DOWN.lock().unwrap().is_empty();
+                    if !eating {
+                        let old = CHINESE_MODE.load(Ordering::Relaxed);
+                        CHINESE_MODE.store(!old, Ordering::Relaxed);
+                        crate::logf!("hook Shift toggle chinese_mode={}", !old);
+                        return 1;
+                    }
+                }
                 let chinese = is_chinese_foreground();
                 let eating = !EATEN_DOWN.lock().unwrap().is_empty();
                 if chinese && eating {
@@ -138,19 +161,9 @@ unsafe extern "system" fn ll_keyboard_proc(code: i32, wparam: WPARAM, lparam: LP
     }
 }
 
-/// 前台线程键盘布局是否为中文。
+/// 中文模式标志，由 Shift 键切换，优先于系统键盘布局判断。
 fn is_chinese_foreground() -> bool {
-    unsafe {
-        let fg: HWND = GetForegroundWindow();
-        let mut pid: u32 = 0;
-        let tid = GetWindowThreadProcessId(fg, &mut pid);
-        if tid == 0 {
-            // 保底：使用本钩子线程布局——若正在组合则继续接管
-            return false;
-        }
-        let layout = GetKeyboardLayout(tid) as usize as u32;
-        layout & 0x3FF == 0x04 // PRIMARYLANGID == LANG_CHINESE
-    }
+    CHINESE_MODE.load(Ordering::Relaxed)
 }
 
 /// 将虚拟键码翻译为引擎按键。
@@ -175,6 +188,11 @@ fn translate(vk: &u32) -> Option<(u32, Option<char>)> {
         0x30..=0x39 => {
             let c = vk as u8 as char;
             Some((vk, Some(c)))
+        }
+        VK_SHIFT => Some((VK_SHIFT, None)),
+        VK_NUMPAD0..=VK_NUMPAD9 => {
+            let c = (b'0' + (vk - VK_NUMPAD0) as u8) as char;
+            Some((vk - VK_NUMPAD0 + 0x30, Some(c)))
         }
         _ => None,
     }

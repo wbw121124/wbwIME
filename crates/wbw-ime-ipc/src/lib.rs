@@ -28,6 +28,7 @@ pub enum ToGui {
         total_pages: usize,
         x: i32,
         y: i32,
+        mode: String,
     },
     Hide,
 }
@@ -38,6 +39,7 @@ pub enum ToDll {
     Select(usize),
     PageUp,
     PageDown,
+    ToggleMode,
 }
 
 /// 4 字节小端长度前缀 + JSON 载荷的读写。
@@ -116,6 +118,7 @@ mod tests {
             total_pages: 1,
             x: 120,
             y: 45,
+            mode: "中".into(),
         };
         let mut buf: Vec<u8> = Vec::new();
         frame::write(&mut buf, &msg).unwrap();
@@ -178,6 +181,7 @@ mod tests {
                     total_pages: 1,
                     x: 1,
                     y: 2,
+                    mode: "中".into(),
                 },
             )
             .unwrap();

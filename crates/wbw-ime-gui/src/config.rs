@@ -250,6 +250,8 @@ pub struct BehaviorConfig {
     pub enter_confirms: bool,
     /// 翻页键设置
     pub page_keys: PageKeys,
+    /// 中英文切换键（默认 "Shift"）
+    pub toggle_key: String,
 }
 
 impl Default for BehaviorConfig {
@@ -261,6 +263,7 @@ impl Default for BehaviorConfig {
             digit_selects: true,
             enter_confirms: true,
             page_keys: PageKeys::default(),
+            toggle_key: "Shift".to_string(),
         }
     }
 }

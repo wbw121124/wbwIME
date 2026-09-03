@@ -34,6 +34,8 @@ pub struct GuiState {
     pub visible: bool,
     /// 最近确认上屏的文本
     pub committed: Option<String>,
+    /// 当前输入模式（"中"/"英"）
+    pub mode: String,
 }
 
 /// wbwIME GUI 引擎
@@ -242,6 +244,7 @@ impl WbwIme {
             total_pages,
             visible,
             committed: self.pending_commit.take(),
+            mode: "中".into(),
         }
     }
 
