@@ -530,3 +530,32 @@ wbw-types:    0 passed (纯类型)
 - [x] P1-2 ThreadModel 注册位置修复（InprocServer32 子键）
 - [x] 构建（debug+release）通过、部署注册成功
 - [ ] 实机验证（需用户在输入法列表添加 wbwIME 并切换输入，观察候选窗口与按键截获——受自动化环境限制，需交互完成）
+
+---
+
+## 修复：无限 wbw-ime-gui 控制台弹窗 + 无窗口 + app 卡死（2026-09-03）
+
+### 根因（三层叠加）
+1. **控制台子系统**：`wbw-ime-gui` 的 `Cargo.toml` 未设 `windows_subsystem`，默认 console 子系统。TSF DLL 在每个宿主进程各 spawn 一次 GUI，每个 GUI 进程启动都弹一个黑底控制台窗口 → **无限控制台弹窗**。
+2. **IPC 模式无单实例保护**：`run_ipc_mode`（`--ipc`）没有命名 Mutex 守卫（仅 `--hook` 模式有），打开 N 个应用就 spawn N 个 GUI 进程 → 无限进程。
+3. **端口冲突 + 弹无效空窗口**：多个 GUI 抢 bind 固定端口 45123，失败进程仍继续跑 `run_event_loop_until_quit` 弹空窗口；DLL 侧按键路径 `ensure_connected` 反复重试连接阻塞宿主 → **无真正可用的候选窗口 + app 卡死**。
+
+### 修复内容
+- `crates/wbw-ime-gui/src/main.rs`：
+  - 文件顶部加 `#![windows_subsystem = "windows"]` → 消除控制台弹窗。
+  - `run_ipc_mode` 开头加 `acquire_single_instance_ipc()` 单实例守卫，重复实例直接退出。
+  - `ipc::spawn(tx)` 改为检查返回值，bind 失败直接退出、不弹无效空窗口。
+- `crates/wbw-ime-gui/src/hook.rs`：提取通用 `acquire_single_instance_for(tag)`（命名 Mutex），新增 `acquire_single_instance_ipc()`（`Local\wbwIME_gui_ipc`）。
+- `crates/wbw-ime-gui/src/ipc.rs`：`spawn` 返回 `bool`，同步 `TcpListener::bind`，成功才启 accept 线程。
+
+### 验证
+- `cargo build -p wbw-ime-gui`（debug、release）通过。
+- 部署后 `wbw-ime-gui.exe` subsystem=2（WINDOWS_GUI），不弹控制台。
+- 实测：连续 spawn 3 个 `--ipc` 实例，仅 1 个进程存活，其余立即退出 → 单实例生效。
+- 重新部署并注册确认：CLSID/ThreadModel=Both/TIP Enable/dict base.cin 均就位。
+
+### 状态
+- [x] 消除控制台弹窗
+- [x] IPC 单实例（多宿主只留一个 GUI）
+- [x] bind 失败不弹空窗
+- [ ] 实机验证（用户添加输入法并切换输入，观察候选窗口/按键/不再卡死）

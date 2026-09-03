@@ -18,15 +18,16 @@ pub static DLL_WRITER: Mutex<Option<BufWriter<TcpStream>>> = Mutex::new(None);
 pub static CONNECTED: AtomicBool = AtomicBool::new(false);
 
 /// 启动监听线程。`tx` 用于把收到的 `ToGui` 交给 UI 线程。
-pub fn spawn(rx: Sender<ToGui>) {
+/// 修改原因：先在当前线程同步 bind（立即发现端口占用），成功后才启动 accept 线程；返回 bool 表示 bind 是否成功。
+pub fn spawn(rx: Sender<ToGui>) -> bool {
+    let listener = match TcpListener::bind(("127.0.0.1", PORT)) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[ipc] bind {PORT} failed: {e}");
+            return false;
+        }
+    };
     std::thread::spawn(move || {
-        let listener = match TcpListener::bind(("127.0.0.1", PORT)) {
-            Ok(l) => l,
-            Err(e) => {
-                eprintln!("[ipc] bind {PORT} failed: {e}");
-                return;
-            }
-        };
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
@@ -42,6 +43,7 @@ pub fn spawn(rx: Sender<ToGui>) {
             }
         }
     });
+    true
 }
 
 fn handle_connection(stream: TcpStream, rx: Sender<ToGui>) {

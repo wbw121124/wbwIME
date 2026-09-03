@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"] // 修改原因：将 GUI 从控制台子系统改为 Windows GUI 子系统，消除 TSF 宿主进程 spawn 时弹出的黑底控制台窗口
+
 //! wbwIME 候选词窗口（Slint 原生 Rust UI）
 //!
 //! 使用 Slint（一等 Rust GUI 框架）渲染候选词窗口，不依赖 Qt。
@@ -329,14 +331,10 @@ fn hook_paste(text: &str) {
 
 /// 钩子模式主入口：全局键盘钩子喂键给本地引擎，候选窗跟随光标，剪贴板上屏。
 fn run_hook_mode(config: &GuiConfig) {
-    let guard = match wbw_ime_gui::hook::acquire_single_instance() {
-        Some(g) => g,
-        None => {
-            // 已有实例，直接退出本进程
-            return;
-        }
-    };
-    let _guard = guard;
+    if wbw_ime_gui::hook::acquire_single_instance().is_none() {
+        // 已有实例，直接退出本进程
+        return;
+    }
 
     let engine = WbwIme::new(config.clone(), config.page_size);
     *ENGINE.lock().unwrap() = Some(engine);
@@ -393,6 +391,12 @@ fn run_hook_mode(config: &GuiConfig) {
 
 /// IPC 模式主入口：监听 DLL，仅显示 + 点击回传，键盘由 DLL 处理。
 fn run_ipc_mode(config: &GuiConfig) {
+    // 修改原因：多宿主进程都会 spawn 本 GUI，靠命名 Mutex 保证全系统只有一个 IPC 实例，
+    // 其余进程直接退出，避免无限弹窗与端口冲突。
+    if wbw_ime_gui::hook::acquire_single_instance_ipc().is_none() {
+        return;
+    }
+
     let ui: Rc<CandidateWindow> = CandidateWindow::new().unwrap().into();
     apply_config(&ui, config);
     ui.window().hide().ok();
@@ -404,7 +408,10 @@ fn run_ipc_mode(config: &GuiConfig) {
 
     // 启动 IPC 服务端，收到 Show/Hide 推入通道
     let (tx, rx) = mpsc::channel::<ToGui>();
-    wbw_ime_gui::ipc::spawn(tx);
+    // 修改原因：端口绑定失败说明已有其他进程占用（或端口不可用），直接退出，不弹无效空窗口
+    if !wbw_ime_gui::ipc::spawn(tx) {
+        return;
+    }
 
     // UI 线程定时排空通道并应用状态
     let ui_timer = ui.clone();

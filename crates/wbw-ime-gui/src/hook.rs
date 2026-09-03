@@ -22,7 +22,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use crate::engine::GuiState;
 
-const WH_KEYBOARD_LL_CODE: i32 = WH_KEYBOARD_LL as i32;
+const WH_KEYBOARD_LL_CODE: i32 = WH_KEYBOARD_LL;
 const HC_ACTION_CODE: i32 = HC_ACTION as i32;
 
 const VK_BACK: u32 = 0x08;
@@ -110,15 +110,12 @@ unsafe extern "system" fn ll_keyboard_proc(code: i32, wparam: WPARAM, lparam: LP
             WM_KEYDOWN => {
                 if is_chinese_foreground() || !EATEN_DOWN.lock().unwrap().is_empty() {
                     let rotated = translate(&info.vkCode);
-                    match rotated {
-                        Some((code, ch)) => {
-                            let eaten = process_key(code, ch);
-                            if eaten {
-                                EATEN_DOWN.lock().unwrap().push(info.vkCode);
-                                return 1;
-                            }
+                    if let Some((code, ch)) = rotated {
+                        let eaten = process_key(code, ch);
+                        if eaten {
+                            EATEN_DOWN.lock().unwrap().push(info.vkCode);
+                            return 1;
                         }
-                        None => {}
                     }
                 }
                 CallNextHookEx(HHOOK::default(), code, wparam, lparam)
@@ -195,11 +192,11 @@ fn process_key(code: u32, ch: Option<char>) -> bool {
     state.visible || state.committed.is_some()
 }
 
-/// 返回单一实例守卫（进程存活期间持有一个已创建的命名 Mutex 手柄）。
-/// 若已有同名 Mutex 存在（另一次运行中），返回 None，调用方应直接退出。
-pub fn acquire_single_instance() -> Option<()> {
+/// 通用单实例守卫：为给定 tag 创建命名 Mutex；若已存在同名 Mutex（另有实例在跑）返回 None。
+/// 修改原因：提取公共逻辑，供 hook / ipc 两种模式复用。
+fn acquire_single_instance_for(tag: &str) -> Option<()> {
     unsafe {
-        let name = encode_wide("Local\\wbwIME_gui_hook");
+        let name = encode_wide(&format!("Local\\wbwIME_gui_{tag}"));
         let handle = CreateMutexW(std::ptr::null(), 0, name.as_ptr());
         if handle.is_null() {
             return None;
@@ -211,6 +208,16 @@ pub fn acquire_single_instance() -> Option<()> {
         INSTANCE_HANDLE.set(handle as usize).ok();
         Some(())
     }
+}
+
+/// 钩子模式单实例守卫（`--hook`）。
+pub fn acquire_single_instance() -> Option<()> {
+    acquire_single_instance_for("hook")
+}
+
+/// IPC 模式单实例守卫（`--ipc`）：全系统仅允许一个候选窗口 GUI 进程。
+pub fn acquire_single_instance_ipc() -> Option<()> {
+    acquire_single_instance_for("ipc")
 }
 
 fn encode_wide(s: &str) -> Vec<u16> {

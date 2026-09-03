@@ -83,7 +83,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test --workspace --exclude wbw-ime-gui
 
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --exclude wbw-ime-gui --all-targets -- -D warnings

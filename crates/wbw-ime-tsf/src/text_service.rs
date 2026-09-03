@@ -382,7 +382,7 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
             *const Guid,
             *mut *mut c_void,
         ) -> HRESULT = std::mem::transmute(**(punk as *const *const usize));
-        qi_fn(punk as *mut c_void, &IID_ITF_KEY_STROKE_MGR, &mut keystroke_mgr)
+        qi_fn(punk, &IID_ITF_KEY_STROKE_MGR, &mut keystroke_mgr)
     };
     crate::log::log(&format!("ts_activate: keystroke_mgr hr=0x{:08X} km={:p}", hr as u32, keystroke_mgr));
 
@@ -402,7 +402,7 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
         ];
         for cand in &candidates {
             let mut out: *mut c_void = std::ptr::null_mut();
-            let h = qi_fn(punk as *mut c_void, cand, &mut out);
+            let h = qi_fn(punk, cand, &mut out);
             crate::log::log(&format!(
                 "ts_activate: punk QI {:08X}-{:04X} hr=0x{:08X} ptr={:p}",
                 cand.data1, cand.data2, h as u32, out

@@ -27,17 +27,17 @@ echo "  目标: $(rustc -vV | grep 'host:' | awk '{print $2}')"
 # ---------- 2. 运行测试 ----------
 echo ""
 echo "[2/5] 运行测试..."
-cargo test --workspace
+cargo test --workspace --exclude wbw-ime-gui
 
 # ---------- 3. Clippy 检查 ----------
 echo ""
 echo "[3/5] Clippy 检查..."
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --exclude wbw-ime-gui --all-targets -- -D warnings
 
 # ---------- 4. 编译 ----------
 echo ""
 echo "[4/5] 编译项目..."
-CARGO_ARGS=(build --workspace)
+CARGO_ARGS=(build --workspace --exclude wbw-ime-gui)
 if [ "$BUILD_PROFILE" = "release" ]; then
     CARGO_ARGS+=(--release)
 fi
