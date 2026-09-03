@@ -559,3 +559,116 @@ wbw-types:    0 passed (纯类型)
 - [x] IPC 单实例（多宿主只留一个 GUI）
 - [x] bind 失败不弹空窗
 - [ ] 实机验证（用户添加输入法并切换输入，观察候选窗口/按键/不再卡死）
+
+---
+
+## 功能完善计划（2026-09-04）
+
+### 背景
+
+代码审查发现 6 个功能缺失/缺陷，需一次性修复。
+
+### 问题清单
+
+| # | 问题 | 根因 | 严重性 |
+|---|------|------|--------|
+| 1 | 未切换到 wbwIME 时按键被拦截 | `ks_test_key_down` 无条件吃 A-Z + 缺少 compartment 中英状态判断 + `focus=1` 传给 `AdviseKeyEventSink` | P0 |
+| 2 | 按数字键输出乱码 | 小键盘数字键 VK 0x60-0x69 无处理分支 + `composing=true` 时无条件吞所有键 | P0 |
+| 3 | Shift 不切换中英 | 中英模式完全未实现——`ImeState` 无 `chinese_mode` 字段，Shift 仅作修饰键判断 | P0 |
+| 4 | 候选项等宽 | Slint `Window` 不自动缩放，Rust 侧未动态设置窗口宽度 | P1 |
+| 5 | 无中/英状态指示 | 候选窗口 UI 无此元素，`InputMode` 类型定义存在但未使用 | P1 |
+| 6 | 无语言栏 | 未实现 `ITfLangBarItemButton`，但候选窗口内加状态指示足够 | P1 |
+
+### 修改方案（全部执行）
+
+#### 1. ImeState 加中英模式（`state.rs`）
+
+- `ImeState` 新增 `pub chinese_mode: bool` 字段，默认 `true`
+- 新增 `pub fn toggle_chinese(&mut self)` 方法：切换 `chinese_mode`，同时重置 composing 状态
+- `process_key()` 中：若 `!chinese_mode && !composing`，仅处理数字键/空格/功能键，字母键直通（不推入 buffer）
+- `process_key()` 中：新增小键盘数字键 `0x60..=0x69` 分支，映射到候选索引 `0-9`
+
+#### 2. TSF 按键处理修复（`text_service.rs`）
+
+**ks_test_key_down：**
+- 读取 `state.chinese_mode`，若英文模式且非 composing → `pf_eaten=0`（透传）
+- 若 `composing=true` 时只吃 `process_key` 实际处理的键（A-Z + 主键盘数字 0-9 + 小键盘数字 0x60-0x69 + Backspace/Space/Enter/Esc/方向键/翻页键），其他键透传
+- Shift 按下时（vkey=0x10）：若非 composing，吃掉 Shift 并在 ks_key_down 里切换中英
+
+**ks_key_down：**
+- Shift 单击（vkey=0x10 且非 composing）：调用 `state.toggle_chinese()`，IPC 通知 GUI 切换状态，`pf_eaten=1`
+- 英文模式 + 非 composing：透传字母键，仅处理功能键（空格/翻页等）
+- 新增小键盘数字键映射：`0x60..=0x69` → 调 `process_key(vkey)` 即可
+
+#### 3. hook 兜底路径（`hook.rs`）
+
+- 全局 `AtomicBool` 的 `CHINESE_MODE` 标志（与 TSF 侧同步）
+- `is_chinese_foreground()` 改为优先读 `CHINESE_MODE`
+- `translate()` 新增 Shift（0x10）映射
+- 按 Shift 时翻转 `CHINESE_MODE`
+- 新增小键盘数字键 `0x60..=0x69` 的 translate 映射
+
+#### 4. IPC 协议扩展（`wbw-ime-ipc/src/lib.rs`）
+
+- `ToGui::Show` 新增 `mode: String`（"中"/"英"）
+- 新增 `ToDll::ToggleMode` 变体（GUI 点击状态按钮时通知 DLL）
+
+#### 5. 候选窗口中英状态指示（Slint UI + main.rs）
+
+**`ui/candidate_window.slint`：**
+- 缓冲栏左侧新增一个小的 `Text` 组件，显示 "中"/"英"
+- 新增 `in property <string> input-mode;`
+- 根据 `input-mode` 设置文字内容和背景色（中文=蓝底白字，英文=灰底黑字）
+
+**`src/main.rs`：**
+- `apply_state()` 中：设置 `ui.set_input_mode(state.mode.clone())`
+- 新增 `input_mode` 属性到 `GuiState` / `ToGui::Show`
+
+**`src/engine.rs`：**
+- `GuiState` 新增 `mode: String` 字段
+- `apply_state()` 中同步 mode 到 Slint
+
+#### 6. 动态窗口宽度（`main.rs`）
+
+```rust
+/// 估算候选文本像素宽度（CJK ≈ 1.0×字号，ASCII ≈ 0.55×字号）
+fn estimate_text_width(text: &str, font_size: f32) -> f32 {
+    text.chars().map(|c| {
+        if c.is_ascii() { font_size * 0.55 } else { font_size }
+    }).sum()
+}
+
+/// 计算窗口总宽度
+fn calc_window_width(candidates: &[String], font_size: f32, ...) -> f32 {
+    // 每个候选：序号 + 文本 + 内边距，加间距，加窗口边框
+    // clamp(120.0, 800.0)
+}
+```
+
+- `apply_state()` 中 show 前调用 `window().set_size(slint::LogicalSize::new(w, h))`
+
+#### 7. config 可配置（`config.rs`）
+
+- `BehaviorConfig` 新增 `toggle_key: String`（默认 `"Shift"`，可选 `"Ctrl+Space"`）
+- `BehaviorConfig` 新增 `digit_selects: bool`（默认 `true`）
+- `state.rs` 读取 config 决定切换键行为
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|----------|
+| `crates/wbw-ime-tsf/src/state.rs` | ImeState 加 chinese_mode + toggle_chinese() + 小键盘数字键 + 英文直通 |
+| `crates/wbw-ime-tsf/src/text_service.rs` | ks_test_key_down 修饰键过滤 + Shift 切换 + 小键盘 + chinese_mode 拦截检查 |
+| `crates/wbw-ime-gui/src/hook.rs` | Shift 切换 + CHINESE_MODE + 小键盘数字键 |
+| `crates/wbw-ime-ipc/src/lib.rs` | ToGui::Show 加 mode + ToDll::ToggleMode |
+| `crates/wbw-ime-gui/ui/candidate_window.slint` | 中英状态指示 Text 组件 |
+| `crates/wbw-ime-gui/src/main.rs` | input-mode 同步 + 动态窗口宽度 |
+| `crates/wbw-ime-gui/src/engine.rs` | GuiState 加 mode |
+| `crates/wbw-ime-gui/src/config.rs` | toggle_key 可配置 |
+
+### 验证
+
+1. `cargo build --release -p wbw-ime-tsf -p wbw-ime-gui` 编译通过
+2. `cargo test --release` 全部测试通过
+3. 实机验证：Shift 切换中英、候选窗口状态指示、小键盘数字键、英文模式直通、窗口宽度自适应
+4. 提交推送
