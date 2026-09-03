@@ -55,20 +55,54 @@ pub static TEXT_SERVICE_COUNT: std::sync::atomic::AtomicI32 =
 /// 容易导致 regsvr32 及真实应用的崩溃/死锁——典型表现为 0xC000013A），
 /// 改为在首次按键处理时懒加载。
 pub fn ensure_state_loaded() {
+    // 修改原因：原实现硬编码从 %USERPROFILE%\AppData\Roaming\wbwIME\dict.fst 加载，
+    // 但安装脚本实际将字典（base.cin / 拼音码表）放到 %LOCALAPPDATA%\wbwIME\dicts\，
+    // 导致 IME_STATE 永远为 None、TSF 不处理按键、GUI 不启动。
+    // 改为多候选路径依次尝试，并将 STATE_INITIALIZED 改为仅在成功时置 true，
+    // 允许失败后下次按键时重试。
+
+    // 已成功加载过，直接返回
+    if IME_STATE.lock().unwrap().is_some() {
+        return;
+    }
+    // 仍在加载中（另一个线程正在尝试），也直接返回，避免并发重复 IO
     if STATE_INITIALIZED.swap(true, std::sync::atomic::Ordering::SeqCst) {
         return;
     }
-    let home = std::env::var("USERPROFILE").unwrap_or_default();
-    let dict_path = std::path::PathBuf::from(&home)
-        .join("AppData")
-        .join("Roaming")
-        .join("wbwIME")
-        .join("dict.fst");
-    if dict_path.exists() {
-        if let Some(state) = crate::state::ImeState::new(&dict_path.to_string_lossy()) {
-            *IME_STATE.lock().unwrap() = Some(state);
+
+    let roaming = std::env::var("APPDATA").unwrap_or_default();
+    let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
+
+    let candidates: Vec<std::path::PathBuf> = vec![
+        std::path::PathBuf::from(&roaming).join("wbwIME").join("dict.fst"),
+        std::path::PathBuf::from(&roaming).join("wbwIME").join("dicts").join("base.cin"),
+        std::path::PathBuf::from(&local).join("wbwIME").join("dict.fst"),
+        std::path::PathBuf::from(&local).join("wbwIME").join("dicts").join("base.cin"),
+        std::path::PathBuf::from(&local).join("wbwIME").join("base.cin"),
+    ];
+
+    for p in &candidates {
+        let exists = p.exists();
+        crate::log::log(&format!(
+            "ensure_state_loaded: try {} exists={}",
+            p.display(),
+            exists
+        ));
+        if exists {
+            if let Some(state) = crate::state::ImeState::new(&p.to_string_lossy()) {
+                crate::log::log(&format!(
+                    "ensure_state_loaded: loaded from {}",
+                    p.display()
+                ));
+                *IME_STATE.lock().unwrap() = Some(state);
+                return;
+            }
         }
     }
+
+    crate::log::log("ensure_state_loaded: no dict found");
+    // 全部失败：重置 STATE_INITIALIZED，允许下次按键时重试
+    STATE_INITIALIZED.store(false, std::sync::atomic::Ordering::SeqCst);
 }
 
 // ========== ITfKeystrokeMgr vtable helpers ==========
@@ -379,8 +413,14 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
             }
         }
         // 若连一个线程管理器接口都拿不到，退回 punk 本身（有的宿主直接给的就是它）。
+        // 修改原因：原代码 thread_mgr = punk 未经 AddRef，但 ts_deactivate 会
+        // 对 ts.thread_mgr 无条件调用 Release，导致对未 AddRef 的裸指针做 Release，
+        // 破坏宿主引用计数 / 潜在崩溃。此处补一次 AddRef 使后续 Release 配平。
         if thread_mgr.is_null() {
             thread_mgr = punk;
+            let add_ref_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
+                std::mem::transmute(*(*(punk as *const *const usize)).add(1));
+            add_ref_fn(punk);
         }
     }
     crate::log::log(&format!("ts_activate: thread_mgr tm={:p}", thread_mgr));

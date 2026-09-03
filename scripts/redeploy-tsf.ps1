@@ -63,6 +63,22 @@ if (Test-Path $SrcGui) {
     Write-Host "未找到 wbw-ime-gui.exe，候选窗口将无法弹出。请先 cargo build --release -p wbw-ime-gui" -ForegroundColor DarkYellow
 }
 
+# 3c. 复制字典（拼音码表等；缺失仅警告，不阻断 TSF 注册）
+$dictsSrc = Join-Path $scriptDir "dicts"
+if (-not (Test-Path $dictsSrc)) {
+    $dictsSrc = Join-Path $repoRoot "resources\dicts"
+}
+if (Test-Path $dictsSrc) {
+    $dictsDst = Join-Path $InstallDir "dicts"
+    if (-not (Test-Path $dictsDst)) {
+        New-Item -ItemType Directory -Path $dictsDst -Force | Out-Null
+    }
+    Copy-Item -Recurse "$dictsSrc\*" $dictsDst -Force
+    Write-Host "已复制字典目录" -ForegroundColor Green
+} else {
+    Write-Host "未找到字典目录 resources\dicts，请先 cargo build --release" -ForegroundColor Yellow
+}
+
 # 4. 重新注册
 $regProc = Start-Process regsvr32.exe -ArgumentList "/s", "`"$DstDll`"" -Wait -PassThru -WindowStyle Hidden
 if ($regProc.ExitCode -ne 0) {

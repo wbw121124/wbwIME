@@ -484,3 +484,44 @@ wbw-types:    0 passed (纯类型)
 13. **f64 NaN处理** — 使用total_cmp
 14. **L0Learner数据上限** — 防止内存泄漏
 15. **rank方法改为引用** — 避免不必要消耗
+
+---
+
+## 排查报告：安装后无窗口、无输入事件（2026-09-03）
+
+### 症状
+- 安装后完全没有出现任何窗口（候选窗口、状态栏等）。
+- 没有截获任何输入事件，切换 wbwIME 后按键无反应。
+
+### 根因（按优先级）
+#### P0-1 【代码级·最直接】字典加载路径不匹配 → IME_STATE 恒为 None → TSF 不吞键
+`text_service.rs:57-72` 的 `ensure_state_loaded()` 硬编码从
+`%USERPROFILE%\AppData\Roaming\wbwIME\dict.fst` 加载字典，但其：
+- 安装脚本（install.ps1）实际把字典复制到 `%LOCALAPPDATA%\wbwIME\dicts\`（且文件名是 base.cin / cs-oi.cin，不是 dict.fst）；
+- 该 Roaming 路径在本机根本不存在。
+后果链：`IME_STATE` 始终为 `None` → `ks_test_key_down` 恒返回 `pf_eaten=0` → TSF 认为本输入法不吃键 → 按键全部穿透给宿主应用 → `ks_key_down` 不被调用 → `refresh_gui()` 永不执行 → GUI 永不启动 → **无窗口、无输入**。
+另有次生问题：`STATE_INITIALIZED` 一次性门控（`swap(true)` 后即锁定）导致本进程内即使字典后来就位也不会重试，会话永久失效。
+
+#### P0-2 【本机环境】输入法未安装/未注册
+实际检查：`%LOCALAPPDATA%\wbwIME` 目录不存在；`CLSID\{E8A3B0F2-...}`、`CTF\TIP\{E8A3B0F2-...}`、键盘布局 `E0200804` 在所有注册表视图（HKLM/HKCR/WOW64/HKCU）全部不存在。TSF 根本不会加载该 DLL → 无日志、无回调。需重新部署 + `regsvr32` 并验证。
+
+#### P1 【代码级】降级路径引用计数 UAF
+`ts_activate`（text_service.rs:382-384）：当所有线程管理器 QI 失败时 `thread_mgr = punk`（**未 AddRef** 的裸指针），但 `ts_deactivate`（457-461）会对 `ts.thread_mgr` **无条件 Release** → 对未曾 AddRef 的指针执行 Release，破坏宿主引用计数，存在 double-release / UAF 崩溃风险。
+
+#### P1 【架构】GUI 依赖脆弱
+`ipc.rs`：
+- `gui_exe_path()` 依赖 DLL 以 `wbw_ime_tsf.dll` 名称加载，且同目录必须有 `wbw-ime-gui.exe`；
+- `cmd.spawn()` 结果被丢弃（`:77`），GUI 缺失/崩溃时静默无窗口；
+- `LAUNCHED` / `HOOK_LAUNCHED` 为一次性，GUI 崩溃后不重启。
+
+### 修复计划
+1. **dict 路径**：`ensure_state_loaded()` 改为加载与安装一致的字典（候选路径：`%LOCALAPPDATA%\wbwIME\dicts\base.cin`、`%APPDATA%\wbwIME\dict.fst` 等），并放宽一次性门控以便运行时重试（失败时允许再次尝试）。
+2. **UAF**：`ts_activate` 降级路径 `thread_mgr = punk` 时对 punk 执行 AddRef，保证 `ts_deactivate` 的 Release 配对；或引入标志区分是否需释放。
+3. **安装脚本**：install.ps1 / redeploy-tsf.ps1 确保字典放到 `ensure_state_loaded` 能读到的位置（与代码候选路径一致）。
+4. **验证**：`cargo build` 通过 → 重新部署 DLL/GUI/字典 → `regsvr32` → 确认注册表键齐全 → 实机观察窗口与按键。
+
+### 状态
+- [ ] P0-1 字典路径修复
+- [ ] P0-2 重新安装并注册验证
+- [ ] P1 UAF 修复
+- [ ] 构建 / 部署 / 注册 / 实机验证
