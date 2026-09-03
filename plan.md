@@ -573,6 +573,7 @@ wbw-types:    0 passed (纯类型)
 | # | 问题 | 根因 | 严重性 |
 |---|------|------|--------|
 | 1 | 未切换到 wbwIME 时按键被拦截 | `ks_test_key_down` 无条件吃 A-Z + 缺少 compartment 中英状态判断 + `focus=1` 传给 `AdviseKeyEventSink` | P0 |
+| 1b | 切换到 wbwIME 时组合键也被拦截 | composing 时 `pf_eaten=1` 不区分修饰键，Ctrl+C/V/Z 等快捷键被吃掉 | P0 |
 | 2 | 按数字键输出乱码 | 小键盘数字键 VK 0x60-0x69 无处理分支 + `composing=true` 时无条件吞所有键 | P0 |
 | 3 | Shift 不切换中英 | 中英模式完全未实现——`ImeState` 无 `chinese_mode` 字段，Shift 仅作修饰键判断 | P0 |
 | 4 | 候选项等宽 | Slint `Window` 不自动缩放，Rust 侧未动态设置窗口宽度 | P1 |
@@ -587,15 +588,18 @@ wbw-types:    0 passed (纯类型)
 - 新增 `pub fn toggle_chinese(&mut self)` 方法：切换 `chinese_mode`，同时重置 composing 状态
 - `process_key()` 中：若 `!chinese_mode && !composing`，仅处理数字键/空格/功能键，字母键直通（不推入 buffer）
 - `process_key()` 中：新增小键盘数字键 `0x60..=0x69` 分支，映射到候选索引 `0-9`
+- `process_key()` 中：若正在 composing 且收到修饰键组合（Ctrl/Alt），重置 composing 状态（取消当前拼音），让快捷键透传
 
 #### 2. TSF 按键处理修复（`text_service.rs`）
 
 **ks_test_key_down：**
+- **始终透传修饰键组合**：Ctrl+X / Alt+X / Ctrl+Shift+X 在任何状态下都不拦截（`pf_eaten=0`），优先级最高
 - 读取 `state.chinese_mode`，若英文模式且非 composing → `pf_eaten=0`（透传）
-- 若 `composing=true` 时只吃 `process_key` 实际处理的键（A-Z + 主键盘数字 0-9 + 小键盘数字 0x60-0x69 + Backspace/Space/Enter/Esc/方向键/翻页键），其他键透传
+- 若 `composing=true` 时只吃 `process_key` 实际处理的键（A-Z + 主键盘数字 0-9 + 小键盘数字 0x60-0x69 + Backspace/Space/Enter/Esc/方向键/翻页键），**修饰键组合透传**
 - Shift 按下时（vkey=0x10）：若非 composing，吃掉 Shift 并在 ks_key_down 里切换中英
 
 **ks_key_down：**
+- **修饰键组合透传**：Ctrl+X / Alt+X 始终不处理，`pf_eaten=0`
 - Shift 单击（vkey=0x10 且非 composing）：调用 `state.toggle_chinese()`，IPC 通知 GUI 切换状态，`pf_eaten=1`
 - 英文模式 + 非 composing：透传字母键，仅处理功能键（空格/翻页等）
 - 新增小键盘数字键映射：`0x60..=0x69` → 调 `process_key(vkey)` 即可
