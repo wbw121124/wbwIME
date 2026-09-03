@@ -520,8 +520,13 @@ wbw-types:    0 passed (纯类型)
 3. **安装脚本**：install.ps1 / redeploy-tsf.ps1 确保字典放到 `ensure_state_loaded` 能读到的位置（与代码候选路径一致）。
 4. **验证**：`cargo build` 通过 → 重新部署 DLL/GUI/字典 → `regsvr32` → 确认注册表键齐全 → 实机观察窗口与按键。
 
+#### P1-2 【代码级·注册】ThreadModel 注册位置错误
+`dll.rs` 的 `DllRegisterServer` 把 `ThreadModel=Both` 写到了 `HKCR\CLSID\{clsid}\ThreadModel`，而 COM 标准要求位于 `InprocServer32\ThreadModel`。错误位置导致 COM 用错误线程模型注册，可能影响 TSF 在部分宿主的加载/激活。已修复为写入 `InprocServer32` 子键。
+
 ### 状态
-- [ ] P0-1 字典路径修复
-- [ ] P0-2 重新安装并注册验证
-- [ ] P1 UAF 修复
-- [ ] 构建 / 部署 / 注册 / 实机验证
+- [x] P0-1 字典路径修复（多候选 + 可重试，已实现）
+- [x] P0-2 重新安装并注册验证（CLSID/TIP/Profile/Category 键齐全）
+- [x] P1 UAF 修复（降级 thread_mgr=punk 补 AddRef）
+- [x] P1-2 ThreadModel 注册位置修复（InprocServer32 子键）
+- [x] 构建（debug+release）通过、部署注册成功
+- [ ] 实机验证（需用户在输入法列表添加 wbwIME 并切换输入，观察候选窗口与按键截获——受自动化环境限制，需交互完成）

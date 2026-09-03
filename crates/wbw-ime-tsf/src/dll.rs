@@ -243,8 +243,9 @@ pub unsafe extern "system" fn DllRegisterServer() -> HRESULT {
         "",
         &dll_path_str,
     ));
+    // 修改：ThreadModel 必须位于 InprocServer32 子键下，而非 CLSID 根键
     put(write(
-        &format!("SOFTWARE\\Classes\\CLSID\\{{{}}}", clsid),
+        &format!("SOFTWARE\\Classes\\CLSID\\{{{}}}\\InprocServer32", clsid),
         "ThreadModel",
         "Both",
     ));
