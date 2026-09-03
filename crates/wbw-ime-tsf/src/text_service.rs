@@ -367,27 +367,14 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
 
     // TSF 规范：ActivateEx 的 punk 参数本身就是指向线程管理器的指针。
     // 标准 msctf.dll 中 ITfThreadMgr / ITfThreadMgr2 / ITfThreadMgrEx /
-    // ITfKeystrokeMgr 全部位于同一个 COM 对象（CLSID_TF_ThreadMgr）上，
-    // 因此从 punk（或任一接口指针）QI ITfKeystrokeMgr 必然成功。
-    //
-    // 这里直接对 punk QI ITfKeystrokeMgr，不使用"多接口三选一"再绕道的方式。
-    // 部分受限宿主（TextInputHost/ApplicationFrameHost）可能仅暴露精简对象，
-    // 若确实拿不到 keystroke mgr，则降级：保留线程上下文但跳过按键 sink，
-    // 避免返回错误导致宿主崩溃。
-    crate::log::log("ts_activate: before QI keystroke_mgr (from punk)");
-    let mut keystroke_mgr: *mut c_void = std::ptr::null_mut();
-    let hr = unsafe {
-        let qi_fn: unsafe extern "system" fn(
-            *mut c_void,
-            *const Guid,
-            *mut *mut c_void,
-        ) -> HRESULT = std::mem::transmute(**(punk as *const *const usize));
-        qi_fn(punk, &IID_ITF_KEY_STROKE_MGR, &mut keystroke_mgr)
-    };
-    crate::log::log(&format!("ts_activate: keystroke_mgr hr=0x{:08X} km={:p}", hr as u32, keystroke_mgr));
-
+    // ITfKeystrokeMgr 全部位于同一个 COM 对象（CLSID_TF_ThreadMgr）上。
     // 需要被保留的 ITfThreadMgr/Ex 接口（取得第一个可用的，用于后续 edit session）。
-    // 优先标准 ITfThreadMgr，其次 ITfThreadMgrEx / ITfThreadMgr2（同一对象）。
+    // 优先标准 ITfThreadMgr，其次 ITfThreadMgrEx / ITfThreadMgr2（同一 COM 对象）。
+    // 修改原因：部分 Win11 新式文本宿主（TextInputHost）传给 Activate/ActivateEx 的
+    // punk 只实现 ITfThreadMgrEx（3E90ADE3）而不实现标准 ITfThreadMgr（AA80E901）或
+    // ITfKeystrokeMgr（AA80E902）；此时若直接从 punk QI keystroke mgr 必然失败。
+    // 因此先把 punk 解析成可用的线程管理器指针，再统一从 thread_mgr 上 QI keystroke mgr
+    //（TSF 规范：ITfKeystrokeMgr 位于线程管理器对象上，与 ts_deactivate 对称）。
     let mut thread_mgr: *mut c_void = std::ptr::null_mut();
     unsafe {
         let qi_fn: unsafe extern "system" fn(
@@ -424,6 +411,19 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
         }
     }
     crate::log::log(&format!("ts_activate: thread_mgr tm={:p}", thread_mgr));
+
+    // 从 thread_mgr（而非 punk）QI ITfKeystrokeMgr —— 见上方修改原因。
+    crate::log::log("ts_activate: before QI keystroke_mgr (from thread_mgr)");
+    let mut keystroke_mgr: *mut c_void = std::ptr::null_mut();
+    let hr = unsafe {
+        let qi_fn: unsafe extern "system" fn(
+            *mut c_void,
+            *const Guid,
+            *mut *mut c_void,
+        ) -> HRESULT = std::mem::transmute(**(thread_mgr as *const *const usize));
+        qi_fn(thread_mgr, &IID_ITF_KEY_STROKE_MGR, &mut keystroke_mgr)
+    };
+    crate::log::log(&format!("ts_activate: keystroke_mgr hr=0x{:08X} km={:p}", hr as u32, keystroke_mgr));
 
     // 拿不到 keystroke mgr 时：保留线程上下文供后续优先 TSF 输出（若可用），
     // 但无按键 sink → 降级模式：启动钩子兜底 GUI（自捕获键盘+剪贴板上屏）。

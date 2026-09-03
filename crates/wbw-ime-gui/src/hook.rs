@@ -108,7 +108,12 @@ unsafe extern "system" fn ll_keyboard_proc(code: i32, wparam: WPARAM, lparam: LP
 
         match wparam as u32 {
             WM_KEYDOWN => {
-                if is_chinese_foreground() || !EATEN_DOWN.lock().unwrap().is_empty() {
+                let chinese = is_chinese_foreground();
+                let eating = !EATEN_DOWN.lock().unwrap().is_empty();
+                if chinese && eating {
+                    crate::logf!("hook keydown vk={} chinese=true eating=true", info.vkCode);
+                }
+                if chinese || eating {
                     let rotated = translate(&info.vkCode);
                     if let Some((code, ch)) = rotated {
                         let eaten = process_key(code, ch);

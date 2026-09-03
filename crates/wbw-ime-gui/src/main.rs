@@ -266,6 +266,9 @@ fn apply_state_cursor(ui: &CandidateWindow, state: GuiState) {
     let was_before = ui.window().is_visible();
     apply_state(ui, state.clone());
     let show_now = ui.window().is_visible();
+    if show_now != was_before {
+        wbw_ime_gui::logf!("window visibility {was_before} -> {show_now} (buffer={:?})", state.buffer);
+    }
     if show_now && (!was_before || state.visible) {
         // 每次显示/组合变化都重新跟随鼠标光标
         unsafe {
@@ -282,6 +285,7 @@ static PENDING_PASTE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(N
 
 /// 剪贴板 + 模拟 Ctrl+V 粘贴（须在钩子线程执行，避免影响 UI 事件循环）
 fn hook_paste(text: &str) {
+    wbw_ime_gui::logf!("hook_paste begin text={:?}", text);
     unsafe {
         use windows_sys::Win32::System::DataExchange::{
             CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
@@ -354,6 +358,7 @@ fn run_hook_mode(config: &GuiConfig) {
     let (tx, rx) = mpsc::channel::<GuiState>();
     let tx2 = tx.clone();
     wbw_ime_gui::hook::start(Box::new(move |code, ch| {
+        wbw_ime_gui::logf!("hook_key code={} ch={:?}", code, ch);
         let state = {
             let mut guard = match ENGINE.lock() {
                 Ok(g) => g,
@@ -366,6 +371,7 @@ fn run_hook_mode(config: &GuiConfig) {
         };
         if let Some(text) = state.committed.as_ref() {
             if !text.is_empty() {
+                wbw_ime_gui::logf!("hook commit text={:?} buffer={:?}", text, state.buffer);
                 *PENDING_PASTE.lock().unwrap() = Some(text.clone());
             }
         }
@@ -377,10 +383,16 @@ fn run_hook_mode(config: &GuiConfig) {
     let ui_timer = ui.clone();
     let timer = slint::Timer::default();
     timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(10), move || {
+        let mut first = true;
         while let Ok(state) = rx.try_recv() {
+            if first {
+                wbw_ime_gui::logf!("ui recv buffer={:?} visible={} pending_commit={:?}", state.buffer, state.visible, state.committed);
+                first = false;
+            }
             apply_state_cursor(&ui_timer, state);
         }
         if let Some(text) = PENDING_PASTE.lock().unwrap().take() {
+            wbw_ime_gui::logf!("perform paste text={:?}", text);
             hook_paste(&text);
         }
     });
