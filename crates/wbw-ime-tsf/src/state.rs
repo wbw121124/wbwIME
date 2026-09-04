@@ -32,7 +32,7 @@ impl ImeState {
             builder.load_cin(path).ok()?;
             builder.deduplicate();
             builder.sort();
-            builder.build_fst()
+            builder.build_fst().ok()?
         };
         let matcher = Matcher::with_dict(
             MatcherConfig {

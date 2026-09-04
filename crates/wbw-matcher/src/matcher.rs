@@ -132,7 +132,9 @@ impl Matcher {
                 });
             }
         }
-        self.dict = Some(builder.build(DictSource::Base));
+        self.dict = Some(builder.build(DictSource::Base).map_err(|e| {
+            wbw_types::ImeError::ParseError(format!("FST 构建失败: {}", e))
+        })?);
         self.clear_cache();
         Ok(())
     }
@@ -454,7 +456,7 @@ mod tests {
             },
         ];
         builder.add_entries(entries);
-        builder.build(DictSource::Base)
+        builder.build(DictSource::Base).unwrap()
     }
 
     #[test]
@@ -504,7 +506,7 @@ mod tests {
             freq: 100,
             source: DictSource::Base,
         }]);
-        let dict = builder.build(DictSource::Base);
+        let dict = builder.build(DictSource::Base).unwrap();
         let matcher = Matcher::with_dict(MatcherConfig::default(), dict);
         let results = matcher.fuzzy_lookup("zdlu");
         assert!(!results.is_empty(), "缺字符编码应通过编辑距离模糊匹配到");
@@ -523,7 +525,7 @@ mod tests {
             freq: 100,
             source: DictSource::Base,
         }]);
-        let dict = builder.build(DictSource::Base);
+        let dict = builder.build(DictSource::Base).unwrap();
         let matcher = Matcher::with_dict(MatcherConfig::default(), dict);
         let results = matcher.fuzzy_lookup("qei");
         assert!(!results.is_empty(), "对调规则 ei→ie 应通过规则引擎命中");
@@ -540,7 +542,7 @@ mod tests {
             freq: 100,
             source: DictSource::Base,
         }]);
-        let dict = builder.build(DictSource::Base);
+        let dict = builder.build(DictSource::Base).unwrap();
         let matcher = Matcher::with_dict(MatcherConfig::default(), dict);
         let results = matcher.fuzzy_lookup("zhongguo");
         // "wo" 到 "zhongguo" 编辑距离很大，应无结果
@@ -566,7 +568,7 @@ mod tests {
                 source: DictSource::Base,
             },
         ]);
-        let dict = builder.build(DictSource::Base);
+        let dict = builder.build(DictSource::Base).unwrap();
         let mut matcher = Matcher::with_dict(MatcherConfig::default(), dict);
         let context = InputContext {
             buffer: "zdl".to_string(),

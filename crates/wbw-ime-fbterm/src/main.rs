@@ -97,7 +97,7 @@ impl FbtermIme {
             builder.load_cin(path).expect("无法加载 .cin 词典");
             builder.deduplicate();
             builder.sort();
-            builder.build_fst()
+            builder.build_fst().expect("FST 构建失败")
         };
 
         let matcher_config = MatcherConfig {

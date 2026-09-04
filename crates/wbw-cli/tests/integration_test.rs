@@ -31,7 +31,7 @@ fn build_test_dict() -> wbw_dict::FstDict {
     builder.load_cin_str(TEST_CIN).unwrap();
     builder.deduplicate();
     builder.sort();
-    builder.build_fst()
+    builder.build_fst().unwrap()
 }
 
 /// 测试词典加载（通过 DictBuilder 从字符串构建）

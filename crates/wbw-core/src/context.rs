@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use wbw_types::{ImeResult, InputContext, InputMode};
 
+/// 缓冲区最大长度
+const MAX_BUFFER_LEN: usize = 128;
+
 /// 上下文管理器
 pub struct ContextManager {
     /// 当前上下文
@@ -44,6 +47,9 @@ impl ContextManager {
 
     /// 添加字符到缓冲区
     pub fn push_char(&mut self, ch: char) {
+        if self.current.buffer.len() >= MAX_BUFFER_LEN {
+            return; // buffer 已满，拒绝继续输入
+        }
         self.save_history();
         self.current.buffer.insert(self.current.cursor, ch);
         self.current.cursor += ch.len_utf8();

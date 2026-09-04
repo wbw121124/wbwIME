@@ -90,7 +90,10 @@ pub unsafe extern "C" fn wbw_ime_create(dict_path: *const c_char) -> *mut WbwIme
             }
             builder.deduplicate();
             builder.sort();
-            builder.build_fst()
+            match builder.build_fst() {
+                Ok(dict) => dict,
+                Err(_) => return ptr::null_mut(),
+            }
         }
     };
 

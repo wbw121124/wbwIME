@@ -11,7 +11,7 @@ fn build_dict() -> wbw_dict::FstDict {
         .unwrap();
     builder.deduplicate();
     builder.sort();
-    builder.build_fst()
+    builder.build_fst().unwrap()
 }
 
 fn bench_dict_load(c: &mut Criterion) {

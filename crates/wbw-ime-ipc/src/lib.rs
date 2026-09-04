@@ -54,10 +54,10 @@ pub mod frame {
             return Ok(None);
         }
         let len = u32::from_le_bytes(len_buf) as usize;
-        if len > 64 * 1024 * 1024 {
+        if len > 1024 * 1024 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("frame too large: {len}"),
+                format!("Frame too large: {} bytes (max 1MB)", len),
             ));
         }
         let mut buf = vec![0u8; len];
@@ -73,8 +73,11 @@ pub mod frame {
     pub fn write<T: Serialize>(writer: &mut impl Write, value: &T) -> io::Result<()> {
         let buf = serde_json::to_vec(value)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        if buf.len() > 64 * 1024 * 1024 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "frame too large"));
+        if buf.len() > 1024 * 1024 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Frame too large (max 1MB)",
+            ));
         }
         let len = (buf.len() as u32).to_le_bytes();
         writer.write_all(&len)?;

@@ -308,7 +308,7 @@ fn load_dict(path: &str) -> Result<FstDict, String> {
             builder.load_cin(path).map_err(|e| e.to_string())?;
             builder.deduplicate();
             builder.sort();
-            Ok(builder.build_fst())
+            builder.build_fst().map_err(|e| e.to_string())
         }
     }
 }
@@ -362,7 +362,7 @@ impl DefaultFst for Result<FstDict, String> {
     fn unwrap_or_default_fst(self) -> FstDict {
         self.unwrap_or_else(|_| {
             let builder = wbw_dict::FstDictBuilder::new();
-            builder.build(wbw_dict::entry::DictSource::Base)
+            builder.build(wbw_dict::entry::DictSource::Base).expect("FST 默认构建失败")
         })
     }
 }

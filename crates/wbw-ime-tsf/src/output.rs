@@ -411,14 +411,14 @@ pub fn clipboard_paste(text: &str) {
         }
         EmptyClipboard();
         let h_mem = GlobalAlloc(0x0002, size);
-        if !h_mem.is_null() {
-            let ptr = GlobalLock(h_mem) as *mut u16;
-            if !ptr.is_null() {
-                std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
-                GlobalUnlock(h_mem);
-                SetClipboardData(1, h_mem);
-            }
+        if h_mem.is_null() { return; }
+        let ptr = GlobalLock(h_mem) as *mut u16;
+        if ptr.is_null() {
+            return;
         }
+        std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
+        GlobalUnlock(h_mem);
+        SetClipboardData(1, h_mem);
         CloseClipboard();
 
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -459,6 +459,14 @@ pub unsafe fn tsf_insert_text(thread_mgr: *mut c_void, _client_id: u32, text: &s
     if thread_mgr.is_null() || text.is_empty() {
         clipboard_paste(text);
         return;
+    }
+
+    // 验证 thread_mgr 仍然有效
+    {
+        let ctx = crate::text_service::TSF_CTX.lock().unwrap();
+        if ctx.thread_mgr.is_null() || ctx.thread_mgr != thread_mgr {
+            return; // thread_mgr 已失效
+        }
     }
 
     // End any active composition first（当前组合路径未激活，防御性清理）

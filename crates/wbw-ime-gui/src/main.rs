@@ -141,7 +141,11 @@ fn resolve_icon(value: &str) -> (slint::Image, String) {
     } else if t.contains("<svg") {
         // 内联 SVG：写入临时文件后加载
         let id = ICON_ID.fetch_add(1, Ordering::SeqCst);
-        let path = std::env::temp_dir().join(format!("wbw-ime-gui-{}-{}.svg", std::process::id(), id));
+        let random: u32 = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u32;
+        let path = std::env::temp_dir().join(format!("wbw-ime-{:x}-{:x}.svg", random, id));
         if std::fs::write(&path, t).is_ok() {
             if let Ok(img) = slint::Image::load_from_path(&path) {
                 return (img, String::new());

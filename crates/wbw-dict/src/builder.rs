@@ -157,7 +157,7 @@ impl DictBuilder {
     }
 
     /// 构建 FST 词典
-    pub fn build_fst(self) -> FstDict {
+    pub fn build_fst(self) -> Result<FstDict, String> {
         let mut builder = FstDictBuilder::new();
         builder.add_entries(self.entries);
         builder.build(DictSource::Base)
@@ -244,7 +244,7 @@ mod tests {
     fn test_dict_builder_build_fst() {
         let mut builder = DictBuilder::new();
         builder.load_cin_str("wo 我\nai 爱\n").unwrap();
-        let dict = builder.build_fst();
+        let dict = builder.build_fst().unwrap();
         assert_eq!(dict.entry_count(), 2);
         assert_eq!(dict.lookup("wo").len(), 1);
     }

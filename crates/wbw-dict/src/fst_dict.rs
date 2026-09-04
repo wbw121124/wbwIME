@@ -60,9 +60,17 @@ impl FstDict {
 
     /// 从文件加载词典
     pub fn from_file(path: &Path) -> ImeResult<Self> {
+        const MAX_DICT_SIZE: usize = 128 * 1024 * 1024; // 128MB
         let bytes = std::fs::read(path).map_err(|e| {
             wbw_types::ImeError::IoError(format!("读取文件失败 {}: {}", path.display(), e))
         })?;
+        if bytes.len() > MAX_DICT_SIZE {
+            return Err(wbw_types::ImeError::ParseError(format!(
+                "Dictionary file too large: {}MB (max {}MB)",
+                bytes.len() / 1024 / 1024,
+                MAX_DICT_SIZE / 1024 / 1024
+            )));
+        }
         let map = fst::Map::new(bytes)
             .map_err(|e| wbw_types::ImeError::ParseError(format!("FST 加载失败: {}", e)))?;
         let entry_count = map.len();
@@ -76,7 +84,7 @@ impl FstDict {
     }
 
     /// 从词条列表构建词典
-    pub fn from_entries(entries: Vec<DictEntry>, source: DictSource) -> Self {
+    pub fn from_entries(entries: Vec<DictEntry>, source: DictSource) -> Result<Self, String> {
         let mut builder = fst::MapBuilder::memory();
 
         // 按 code 排序以确保 FST 有序性
@@ -90,20 +98,23 @@ impl FstDict {
             let key = format!("{}{}{}", entry.code, KEY_SEP, entry.word);
             builder
                 .insert(key.as_bytes(), entry.freq as u64)
-                .expect("FST builder insert failed");
+                .map_err(|e| format!("FST insert failed: {}", e))?;
             entry_count += 1;
             code_set.insert(entry.code.clone());
         }
 
-        let bytes = builder.into_inner().expect("FST builder finalize failed");
-        let map = fst::Map::new(bytes).expect("FST map construction failed");
+        let bytes = builder
+            .into_inner()
+            .map_err(|e| format!("FST finalize failed: {}", e))?;
+        let map = fst::Map::new(bytes)
+            .map_err(|e| format!("FST map failed: {}", e))?;
 
-        Self {
+        Ok(Self {
             map,
             entry_count,
             code_count: code_set.len(),
             source,
-        }
+        })
     }
 
     /// 序列化为二进制字节（可写入 .fst 文件）
@@ -147,10 +158,14 @@ impl FstDict {
 
     /// 前缀查询：返回所有编码以 prefix 开头的词条
     pub fn prefix_lookup(&self, prefix: &str) -> Vec<DictEntry> {
+        const MAX_PREFIX_RESULTS: usize = 200;
         let mut results = Vec::new();
         // 用 prefix 本身（不含 SEP）作为 range 下界，匹配所有以 prefix 开头的 code
         let mut stream = self.map.range().ge(prefix.as_bytes()).into_stream();
         while let Some((key, freq)) = stream.next() {
+            if results.len() >= MAX_PREFIX_RESULTS {
+                break;
+            }
             let key_str = String::from_utf8_lossy(key);
             if let Some(code_end) = key_str.find(KEY_SEP) {
                 let code = &key_str[..code_end];
@@ -177,10 +192,14 @@ impl FstDict {
     /// 采用流式全表扫描 + code 部分精确编辑距离过滤的策略。
     /// 当 max_edit_distance=1 时，通过长度剪枝（|len(a)-len(b)|<=1）快速排除明显不匹配的条目。
     pub fn fuzzy_lookup(&self, code: &str, max_edit_distance: usize) -> Vec<(DictEntry, usize)> {
+        const MAX_FUZZY_RESULTS: usize = 100;
         let query_len = code.chars().count();
         let mut results = Vec::new();
         let mut stream = self.map.stream();
         while let Some((key, freq)) = stream.next() {
+            if results.len() >= MAX_FUZZY_RESULTS {
+                break;
+            }
             let key_str = String::from_utf8_lossy(key);
             if let Some(code_end) = key_str.find(KEY_SEP) {
                 let matched_code = &key_str[..code_end];
@@ -275,7 +294,9 @@ impl FstDict {
             }
         }
 
-        *self = Self::from_entries(all_entries, self.source);
+        if let Ok(merged) = Self::from_entries(all_entries, self.source) {
+            *self = merged;
+        }
     }
 
     /// 内部：遍历所有词条（返回 owned 值）
@@ -349,7 +370,7 @@ impl FstDictBuilder {
         self.entries.extend(entries);
     }
 
-    pub fn build(self, source: DictSource) -> FstDict {
+    pub fn build(self, source: DictSource) -> Result<FstDict, String> {
         FstDict::from_entries(self.entries, source)
     }
 
@@ -370,8 +391,12 @@ impl Default for FstDictBuilder {
 
 /// 计算两个字符串的编辑距离（Levenshtein 距离）
 pub fn edit_distance(s1: &str, s2: &str) -> usize {
+    const MAX_EDIT_LEN: usize = 64;
     let s1: Vec<char> = s1.chars().collect();
     let s2: Vec<char> = s2.chars().collect();
+    if s1.len() > MAX_EDIT_LEN || s2.len() > MAX_EDIT_LEN {
+        return usize::MAX; // 超长输入直接返回最大距离
+    }
     let m = s1.len();
     let n = s2.len();
 
@@ -397,7 +422,7 @@ pub fn edit_distance(s1: &str, s2: &str) -> usize {
 }
 
 /// 合并两个词典
-pub fn merge_dicts(dict1: &FstDict, dict2: &FstDict) -> FstDict {
+pub fn merge_dicts(dict1: &FstDict, dict2: &FstDict) -> Result<FstDict, String> {
     let mut entries: Vec<DictEntry> = dict1.collect_entries();
     entries.extend(dict2.collect_entries());
     FstDict::from_entries(entries, dict1.source)
@@ -424,7 +449,7 @@ mod tests {
             make_entry("wo", "喔", 50),
             make_entry("ai", "爱", 200),
         ];
-        let dict = FstDict::from_entries(entries, DictSource::Base);
+        let dict = FstDict::from_entries(entries, DictSource::Base).unwrap();
 
         let results = dict.lookup("wo");
         assert_eq!(results.len(), 2);
@@ -447,7 +472,7 @@ mod tests {
             make_entry("shijie", "世界", 200),
             make_entry("shi", "十", 90),
         ];
-        let dict = FstDict::from_entries(entries, DictSource::Base);
+        let dict = FstDict::from_entries(entries, DictSource::Base).unwrap();
 
         let results = dict.prefix_lookup("shi");
         assert_eq!(results.len(), 4);
@@ -459,7 +484,7 @@ mod tests {
             make_entry("zhongguo", "中国", 1000),
             make_entry("zhongguo", "忠国", 10),
         ];
-        let dict = FstDict::from_entries(entries, DictSource::Base);
+        let dict = FstDict::from_entries(entries, DictSource::Base).unwrap();
 
         let results = dict.fuzzy_lookup("zongguo", 1);
         assert_eq!(results.len(), 2);
@@ -480,8 +505,8 @@ mod tests {
     fn test_merge() {
         let entries1 = vec![make_entry("wo", "我", 100)];
         let entries2 = vec![make_entry("wo", "我", 100), make_entry("wo", "喔", 50)];
-        let mut dict1 = FstDict::from_entries(entries1, DictSource::Base);
-        let dict2 = FstDict::from_entries(entries2, DictSource::User);
+        let mut dict1 = FstDict::from_entries(entries1, DictSource::Base).unwrap();
+        let dict2 = FstDict::from_entries(entries2, DictSource::User).unwrap();
 
         dict1.merge(&dict2);
         assert_eq!(dict1.entry_count(), 2);
@@ -494,7 +519,7 @@ mod tests {
             make_entry("wo", "喔", 50),
             make_entry("ai", "爱", 200),
         ];
-        let dict = FstDict::from_entries(entries, DictSource::Base);
+        let dict = FstDict::from_entries(entries, DictSource::Base).unwrap();
         let stats = dict.stats();
         assert_eq!(stats.total_entries, 3);
         assert_eq!(stats.total_codes, 2);
@@ -506,7 +531,7 @@ mod tests {
         let mut builder = FstDictBuilder::new();
         builder.add_entry(make_entry("wo", "我", 100));
         builder.add_entry(make_entry("ai", "爱", 200));
-        let dict = builder.build(DictSource::Base);
+        let dict = builder.build(DictSource::Base).unwrap();
         assert_eq!(dict.entry_count(), 2);
     }
 
@@ -517,7 +542,7 @@ mod tests {
             make_entry("ai", "爱", 200),
             make_entry("shijie", "世界", 300),
         ];
-        let dict = FstDict::from_entries(entries, DictSource::Base);
+        let dict = FstDict::from_entries(entries, DictSource::Base).unwrap();
 
         let bytes = dict.to_bytes();
         assert!(!bytes.is_empty());
@@ -535,7 +560,7 @@ mod tests {
     #[test]
     fn test_roundtrip_file() {
         let entries = vec![make_entry("wo", "我", 100), make_entry("ai", "爱", 200)];
-        let dict = FstDict::from_entries(entries, DictSource::Base);
+        let dict = FstDict::from_entries(entries, DictSource::Base).unwrap();
 
         let dir = std::env::temp_dir().join("wbwime_test");
         std::fs::create_dir_all(&dir).unwrap();
@@ -579,7 +604,7 @@ mod tests {
             })
             .collect();
 
-        let dict = FstDict::from_entries(dict_entries, DictSource::Base);
+        let dict = FstDict::from_entries(dict_entries, DictSource::Base).unwrap();
 
         let bytes = dict.to_bytes();
         let dict2 = FstDict::from_bytes(bytes).unwrap();
