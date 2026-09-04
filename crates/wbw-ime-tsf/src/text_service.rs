@@ -570,10 +570,8 @@ unsafe extern "system" fn ks_test_key_down(
     };
 
     // 英文模式 + 非 composing：字母键透传
-    if !state.chinese_mode && !state.composing {
-        if (0x41..=0x5A).contains(&vkey) {
-            return S_OK;
-        }
+    if !state.chinese_mode && !state.composing && (0x41..=0x5A).contains(&vkey) {
+        return S_OK;
     }
 
     // composing 时：只吃 process_key 实际处理的键
@@ -674,10 +672,8 @@ unsafe extern "system" fn ks_key_down(
         };
 
         // 英文模式 + 非 composing：字母键透传
-        if !state.chinese_mode && !state.composing {
-            if (0x41..=0x5A).contains(&vkey) {
-                return S_OK;
-            }
+        if !state.chinese_mode && !state.composing && (0x41..=0x5A).contains(&vkey) {
+            return S_OK;
         }
 
         state.process_key(vkey);
