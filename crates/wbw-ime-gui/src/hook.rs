@@ -168,7 +168,7 @@ unsafe extern "system" fn ll_keyboard_proc(
 fn is_system_chinese_layout() -> bool {
     unsafe {
         let hwnd = GetForegroundWindow();
-        if hwnd == std::ptr::null_mut() {
+        if hwnd.is_null() {
             return false;
         }
         let mut pid = 0u32;
