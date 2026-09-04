@@ -1,5 +1,5 @@
 [dict]
-base_path = "resources/dicts/cs-oi.cin"
+base_path = "resources/dicts/pinyin.cin"
 ngram_path = "resources/dicts/ngram.bin"
 
 [matcher]

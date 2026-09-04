@@ -37,6 +37,8 @@ pub struct GuiState {
     pub committed: Option<String>,
     /// 当前输入模式（"中"/"英"）
     pub mode: String,
+    /// 是否使用 fallback 位置（hook 模式无 TSF 坐标时标记）
+    pub fallback_position: bool,
 }
 
 /// wbwIME GUI 引擎
@@ -133,6 +135,11 @@ impl WbwIme {
                 };
                 return self.after_response(response);
             }
+        }
+
+        // 5) Shift 键：切换中文/英文模式
+        if code == 0x10 {
+            return self.toggle_mode();
         }
 
         // 4) 其余功能键（Enter/Backspace/Esc/方向/翻页）交给 imekit 状态机
@@ -250,6 +257,7 @@ impl WbwIme {
             } else {
                 "英".into()
             },
+            fallback_position: false, // TSF 模式使用 TSF 提供的坐标
         }
     }
 
@@ -261,6 +269,12 @@ impl WbwIme {
     /// 检查是否在输入中
     pub fn is_inputting(&self) -> bool {
         self.host.is_inputting()
+    }
+
+    /// 切换中/英文模式
+    fn toggle_mode(&mut self) -> GuiState {
+        CHINESE_MODE.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
+        self.snapshot()
     }
 
     /// 重置引擎状态

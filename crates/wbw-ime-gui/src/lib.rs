@@ -11,3 +11,4 @@ pub mod log;
 
 pub use config::GuiConfig;
 pub use engine::{GuiState, WbwIme};
+pub use hook::force_exit_if_idle;

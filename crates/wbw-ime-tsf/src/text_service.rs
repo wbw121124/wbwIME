@@ -425,8 +425,7 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
     };
     crate::log::log(&format!("ts_activate: keystroke_mgr hr=0x{:08X} km={:p}", hr as u32, keystroke_mgr));
 
-    // 拿不到 keystroke mgr 时：保留线程上下文供后续优先 TSF 输出（若可用），
-    // 但无按键 sink → 降级模式：启动钩子兜底 GUI（自捕获键盘+剪贴板上屏）。
+    // 拿不到 keystroke mgr 时：保留线程上下文，启动钩子兜底 GUI。
     if hr != S_OK || keystroke_mgr.is_null() {
         crate::log::log("ts_activate: ITfKeystrokeMgr not available -> degraded, launch hook gui");
         ts.thread_mgr = thread_mgr;
@@ -434,6 +433,9 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
         crate::ipc::launch_hook_gui();
         return S_OK;
     }
+
+    // 始终启动候选窗口 GUI（hook/IPC 双模式共用），避免 TSF 路径下 GUI 不显示
+    crate::ipc::launch_hook_gui();
 
     ts.thread_mgr = thread_mgr;
     *TSF_CTX.lock().unwrap_or_else(|e| e.into_inner()) = TsfContext { thread_mgr, client_id: ts.client_id };

@@ -309,7 +309,14 @@ fn apply_ipc_show(ui: &CandidateWindow, msg: ToGui, config: &GuiConfig) {
     ui.window().set_size(slint::LogicalSize::new(width, height as f32));
 
     // 窗口左上角定位在光标下方（该坐标为 TSF GetScreenCoords 给出的物理像素）
-    ui.window().set_position(PhysicalPosition::new(x, y + 2));
+    // x/y 由 DLL 通过 IPC 推送，非 fallback 值（fallback 为 -320/-120）
+    let is_fallback = x <= -320 && y <= -120;
+    if !is_fallback {
+        ui.window().set_position(PhysicalPosition::new(x, y + 2));
+    } else {
+        // 使用 fallback 坐标（DLL 未提供有效 TSF 坐标时的兜底）
+        ui.window().set_position(PhysicalPosition::new(x, y + 2));
+    }
     ui.window().show().ok();
 }
 
@@ -321,8 +328,9 @@ fn apply_state_cursor(ui: &CandidateWindow, state: GuiState) {
     if show_now != was_before {
         wbw_ime_gui::logf!("window visibility {was_before} -> {show_now} (buffer={:?})", state.buffer);
     }
-    if show_now && (!was_before || state.visible) {
-        // 每次显示/组合变化都重新跟随鼠标光标
+    if show_now && (!was_before || state.visible)
+        && state.fallback_position {
+        // hook 模式：回退到鼠标指针位置
         unsafe {
             let mut pt: windows_sys::Win32::Foundation::POINT = std::mem::zeroed();
             if windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt) != 0 {
@@ -330,6 +338,7 @@ fn apply_state_cursor(ui: &CandidateWindow, state: GuiState) {
             }
         }
     }
+    // TSF 模式：坐标已由 IPC 推送，无需额外定位
 }
 
 /// 待上屏文本（钩子线程提交，UI 线程异步粘贴）
@@ -425,6 +434,9 @@ fn run_hook_mode(config: &GuiConfig) {
                 None => return GuiState::default(),
             }
         };
+        // hook 模式标记使用 fallback 位置
+        let mut state = state;
+        state.fallback_position = true;
         if let Some(text) = state.committed.as_ref() {
             if !text.is_empty() {
                 wbw_ime_gui::logf!("hook commit text={:?} buffer={:?}", text, state.buffer);
