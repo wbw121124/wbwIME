@@ -351,21 +351,27 @@ impl PinyinValidator {
         Self::can_split_into_syllables(&s)
     }
 
-    /// 递归检查是否可以拆分为有效音节
+    /// 检查是否可以拆分为有效音节（带 memoization，避免指数级回溯）
     fn can_split_into_syllables(s: &str) -> bool {
+        let mut memo = std::collections::HashMap::new();
+        Self::can_split_into_syllables_memos(s, &mut memo)
+    }
+
+    fn can_split_into_syllables_memos<'a>(s: &'a str, memo: &mut std::collections::HashMap<&'a str, bool>) -> bool {
         if s.is_empty() {
             return true;
         }
+        if let Some(&cached) = memo.get(s) {
+            return cached;
+        }
         // 尝试不同长度的前缀
         let max_len = std::cmp::min(6, s.len());
-        for len in (1..=max_len).rev() {
-            if let Some(prefix) = s.get(..len) {
-                if VALID_SYLLABLES.contains(&prefix) && Self::can_split_into_syllables(&s[len..]) {
-                    return true;
-                }
-            }
-        }
-        false
+        let result = (1..=max_len)
+            .rev()
+            .filter_map(|len| s.get(..len))
+            .any(|prefix| VALID_SYLLABLES.contains(&prefix) && Self::can_split_into_syllables_memos(&s[prefix.len()..], memo));
+        memo.insert(s, result);
+        result
     }
 }
 
@@ -442,5 +448,21 @@ mod tests {
                 s
             );
         }
+    }
+
+    #[test]
+    fn test_long_input_no_stack_overflow() {
+        // 含非法音节的长输入串，验证 memoization 避免指数回溯导致 hang/栈溢出
+        // "xyz" 是非法音节，拼接成长串后 should 快速返回 false
+        let long_input = "xyz".repeat(100); // 300 字符，全非法
+        let result = PinyinValidator::is_valid_pinyin(&long_input);
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_valid_pinyin_long_string() {
+        // 合法长拼音应能正确解析
+        assert!(PinyinValidator::is_valid_pinyin("zhongguorenmin"));
+        assert!(PinyinValidator::is_valid_pinyin("woshizhongguoren"));
     }
 }

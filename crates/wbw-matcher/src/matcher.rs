@@ -192,15 +192,13 @@ impl Matcher {
             candidates.extend(fuzzy);
         }
 
-        // 按分数降序排序
+        // 按分数降序排序后，全局按 text 去重（保留首个即最高分）
         candidates.sort_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-        // 全局去重（保留首个即最高分），不受相邻性限制
-        let mut seen = std::collections::HashSet::new();
-        candidates.retain(|c| seen.insert(c.text.clone()));
+        wbw_core::CandidateFilter::dedup_by_text(&mut candidates);
         candidates
     }
 
@@ -306,8 +304,7 @@ impl Matcher {
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-        let mut seen = std::collections::HashSet::new();
-        candidates.retain(|c| seen.insert((c.text.clone(), c.code.clone())));
+        wbw_core::CandidateFilter::deduplicate(&mut candidates);
         candidates
     }
 

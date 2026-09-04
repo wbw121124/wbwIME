@@ -288,4 +288,25 @@ mod tests {
         let restored = snapshot.to_input_context(1);
         assert_eq!(restored.buffer, "a");
     }
+
+    #[test]
+    fn test_context_push_pop_multibyte() {
+        // 多字节字符（emoji、CJK）push/pop 应保持缓冲区一致性
+        let mut ctx = ContextManager::new(1);
+        ctx.push_char('中');
+        ctx.push_char('国');
+        ctx.push_char('🎉');
+        assert_eq!(ctx.buffer(), "中国🎉");
+        assert_eq!(ctx.buffer_len(), "中国🎉".len());
+        assert_eq!(ctx.cursor(), "中国🎉".len());
+
+        let popped = ctx.pop_char();
+        assert_eq!(popped, Some('🎉'));
+        assert_eq!(ctx.buffer(), "中国");
+        assert_eq!(ctx.cursor(), "中国".len());
+
+        let popped2 = ctx.pop_char();
+        assert_eq!(popped2, Some('国'));
+        assert_eq!(ctx.buffer(), "中");
+    }
 }

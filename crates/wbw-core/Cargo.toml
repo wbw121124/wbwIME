@@ -9,3 +9,4 @@ license.workspace = true
 wbw-types = { path = "../wbw-types" }
 serde.workspace = true
 thiserror.workspace = true
+rand = "0.8"

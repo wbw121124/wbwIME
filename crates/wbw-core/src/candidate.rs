@@ -216,10 +216,16 @@ impl CandidateFilter {
         candidates.iter().take(max_count).collect()
     }
 
-    /// 去重（按 text+code 全局去重，保留首次出现；不受相邻性限制）
+    /// 按 (text, code) 全局去重，保留首次出现的最高分条目
     pub fn deduplicate(candidates: &mut Vec<Candidate>) {
         let mut seen = std::collections::HashSet::new();
         candidates.retain(|c| seen.insert((c.text.clone(), c.code.clone())));
+    }
+
+    /// 按 text 全局去重，保留首次出现的最高分条目
+    pub fn dedup_by_text(candidates: &mut Vec<Candidate>) {
+        let mut seen = std::collections::HashSet::new();
+        candidates.retain(|c| seen.insert(c.text.clone()));
     }
 
     /// 排序（按分数降序）

@@ -103,7 +103,24 @@ impl ImeHost {
             window_manager,
             key_mapper,
             confirmed_text: String::new(),
-            session_id: 1,
+            session_id: rand::random(),
+        }
+    }
+
+    /// 创建新的 IME 宿主，使用指定会话 ID
+    pub fn with_session_id(config: ImeConfig, session_id: u64) -> Self {
+        let window_manager = CandidateWindowManager::new();
+        let key_mapper = KeyMapper::new();
+
+        Self {
+            config,
+            state: ImeState::Idle,
+            buffer: String::new(),
+            cursor: 0,
+            window_manager,
+            key_mapper,
+            confirmed_text: String::new(),
+            session_id,
         }
     }
 

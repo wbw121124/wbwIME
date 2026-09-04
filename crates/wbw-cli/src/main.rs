@@ -500,7 +500,11 @@ fn run_test_match(code: &str, dict_path: &Path) -> CliResult<()> {
         });
         let mut seen = std::collections::HashSet::new();
         all.retain(|c| seen.insert(c.text.clone()));
-    let ranked = ranker.rank(&all);
+        if all.is_empty() {
+            println!("未找到编码 '{}' 的匹配", code);
+            return Ok(());
+        }
+        let ranked = ranker.rank(&all);
         println!("\n最终排序 (前 {} 个):", config.rank.max_candidates);
         let max = config.rank.max_candidates.max(1);
         show_candidates(&ranked[..ranked.len().min(max)]);

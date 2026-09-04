@@ -174,11 +174,10 @@ impl FstDict {
 
     /// 模糊查询：查找编辑距离在 max_edit_distance 以内的编码
     ///
-    /// 注意：FST Levenshtein automaton 无法直接用于此场景，因为 key 格式为
-    /// `code + \x01 + word`，automaton 匹配完整 key 时 word 部分的字节会
-    /// 膨胀编辑距离，导致合法匹配被拒绝。因此采用流式全表扫描 + code 部分
-    /// 精确编辑距离过滤的策略。
+    /// 采用流式全表扫描 + code 部分精确编辑距离过滤的策略。
+    /// 当 max_edit_distance=1 时，通过长度剪枝（|len(a)-len(b)|<=1）快速排除明显不匹配的条目。
     pub fn fuzzy_lookup(&self, code: &str, max_edit_distance: usize) -> Vec<(DictEntry, usize)> {
+        let query_len = code.chars().count();
         let mut results = Vec::new();
         let mut stream = self.map.stream();
         while let Some((key, freq)) = stream.next() {
@@ -186,6 +185,13 @@ impl FstDict {
             if let Some(code_end) = key_str.find(KEY_SEP) {
                 let matched_code = &key_str[..code_end];
                 let word = &key_str[code_end + 1..];
+                // 长度剪枝：编辑距离 <= max 的两个字符串，长度差不得超过 max
+                let matched_len = matched_code.chars().count();
+                if matched_len as i64 - query_len as i64 > max_edit_distance as i64
+                    || query_len as i64 - matched_len as i64 > max_edit_distance as i64
+                {
+                    continue;
+                }
                 let dist = crate::edit_distance(code, matched_code);
                 if dist <= max_edit_distance {
                     results.push((
