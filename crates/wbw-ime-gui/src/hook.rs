@@ -19,7 +19,7 @@ use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyboardLayout, HKL};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, GetForegroundWindow,
-    GetWindowThreadProcessId, KBDLLHOOKSTRUCT, PostQuitMessage, SetWindowsHookExW, TranslateMessage,
+    GetWindowThreadProcessId, KBDLLHOOKSTRUCT, SetWindowsHookExW, TranslateMessage,
     UnhookWindowsHookEx, HHOOK, HC_ACTION, LLKHF_INJECTED, MSG, WH_KEYBOARD_LL, WM_KEYDOWN,
     WM_KEYUP, WM_QUIT,
 };
@@ -88,8 +88,6 @@ fn run_hook_thread() {
 
 /// 主持钩子的线程 ID（识别前台线程是否仍是本钩子线程，用于布局门控）。
 static HOOK_THREAD_ID: Mutex<Option<u32>> = Mutex::new(None);
-/// 每帧是否调用 force_exit_if_idle（低频检查，防止非中文布局下长期驻留）。
-static EXIT_CHECK_TICK: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 /// 低级键盘钩子回调。
 unsafe extern "system" fn ll_keyboard_proc(
     code: i32,
@@ -108,12 +106,6 @@ unsafe extern "system" fn ll_keyboard_proc(
         // 忽略注入事件（防止我们模拟的 Ctrl+V 递归）
         if info.flags & LLKHF_INJECTED != 0 {
             return CallNextHookEx(HHOOK::default(), code, wparam, lparam);
-        }
-
-        // 低频检查：若当前非中文模式且无吞键，允许钩子自行退出
-        let tick = EXIT_CHECK_TICK.fetch_add(1, Ordering::Relaxed);
-        if tick.is_multiple_of(30) {
-            force_exit_if_idle();
         }
 
         // 同步本钩子线程 ID（仅占位，保留后续诊断能力）
@@ -184,7 +176,6 @@ unsafe extern "system" fn ll_keyboard_proc(
     }
 }
 
-/// 低频检查：钩子线程每帧（由 tick 驱动）调用此函数，当非中文模式且无吞键时触发退出。
 /// 检查前台窗口的系统键盘布局是否为中文。
 fn is_system_chinese_layout() -> bool {
     unsafe {
@@ -213,17 +204,6 @@ fn is_chinese_foreground() -> bool {
     is_system_chinese_layout()
 }
 
-/// 主动退出钩子：若当前非强制中文模式且无吞键，发送 WM_QUIT 终止钩子线程。
-pub fn force_exit_if_idle() {
-    if !CHINESE_MODE.load(Ordering::Acquire) {
-        let eaten = EATEN_DOWN.lock().unwrap_or_else(|e| e.into_inner());
-        if eaten.is_empty() {
-            unsafe { PostQuitMessage(0); }
-        }
-    }
-}
-
-/// 每帧低频检查是否应退出（在钩子回调中周期性调用）。
 /// 将虚拟键码翻译为引擎按键。
 fn translate(vk: &u32) -> Option<(u32, Option<char>)> {
     let vk = *vk;

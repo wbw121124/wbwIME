@@ -124,8 +124,10 @@ fn handle_key(code: u32, ch: Option<char>, ui: &CandidateWindow) {
 
 /// 处理候选点击（第 idx 个候选，0 起），等价于数字键 idx+1
 fn handle_item_click(idx: i32, ui: &CandidateWindow) {
-    let code = 49 + idx as u32;
-    let ch = char::from_u32(49 + idx as u32);
+    // idx 0-8 → code 49-57 ('1'-'9')
+    // idx 9 → code 48 ('0')
+    let code = if idx == 9 { 48 } else { 49 + idx as u32 };
+    let ch = char::from_u32(code);
     handle_key(code, ch, ui);
 }
 
@@ -185,7 +187,6 @@ fn apply_config(ui: &CandidateWindow, config: &GuiConfig) {
     ui.set_window_border_width(win.border_width as f32);
     ui.set_window_radius(win.border_radius as f32);
     ui.set_window_padding(win.padding as f32);
-    ui.set_window_opacity(win.opacity as f32);
 
     let buffer = &config.buffer_bar;
     ui.set_buffer_background(color(&buffer.background_color, 1.0));
@@ -260,16 +261,32 @@ fn calc_window_width(config: &GuiConfig, buffer: &str, candidates: &[String]) ->
 
     // 候选栏宽度
     let item_font_size = config.candidate_item.font_size as f32;
+    let vertical_layout = config.candidate_bar.layout.eq_ignore_ascii_case("vertical");
     let mut candidates_width = 0.0f32;
-    for (i, candidate) in candidates.iter().enumerate() {
+    
+    if vertical_layout {
+        // 垂直布局：宽度 = 最宽候选的宽度 + 序号宽度 + padding
         let idx_width = if config.candidate_item.show_index {
-            estimate_text_width(&(i + 1).to_string(), item_font_size) + estimate_text_width(". ", item_font_size)
+            estimate_text_width(&(candidates.len()).to_string(), item_font_size) + estimate_text_width(". ", item_font_size)
         } else {
             0.0
         };
-        candidates_width += idx_width + estimate_text_width(candidate, item_font_size);
-        if i < candidates.len() - 1 {
-            candidates_width += spacing;
+        let max_candidate_width = candidates.iter()
+            .map(|c| estimate_text_width(c, item_font_size))
+            .fold(0.0f32, f32::max);
+        candidates_width = idx_width + max_candidate_width;
+    } else {
+        // 水平布局：宽度 = 所有候选宽度之和
+        for (i, candidate) in candidates.iter().enumerate() {
+            let idx_width = if config.candidate_item.show_index {
+                estimate_text_width(&(i + 1).to_string(), item_font_size) + estimate_text_width(". ", item_font_size)
+            } else {
+                0.0
+            };
+            candidates_width += idx_width + estimate_text_width(candidate, item_font_size);
+            if i < candidates.len() - 1 {
+                candidates_width += spacing;
+            }
         }
     }
 
@@ -314,8 +331,8 @@ fn apply_ipc_show(ui: &CandidateWindow, msg: ToGui, config: &GuiConfig) {
     if !is_fallback {
         ui.window().set_position(PhysicalPosition::new(x, y + 2));
     } else {
-        // 使用 fallback 坐标（DLL 未提供有效 TSF 坐标时的兜底）
-        ui.window().set_position(PhysicalPosition::new(x, y + 2));
+        // 使用屏幕右下角作为兜底位置
+        ui.window().set_position(PhysicalPosition::new(800, 600));
     }
     ui.window().show().ok();
 }

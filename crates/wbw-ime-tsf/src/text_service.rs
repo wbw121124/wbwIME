@@ -7,6 +7,8 @@ use crate::guid::*;
 use crate::output;
 use crate::output::{HRESULT, S_OK, ULONG};
 
+const E_FAIL: HRESULT = -2147467259;
+
 pub static IME_STATE: std::sync::Mutex<Option<crate::state::ImeState>> =
     std::sync::Mutex::new(None);
 
@@ -205,31 +207,43 @@ unsafe extern "system" fn ks_qi(
     riid: *const Guid,
     ppv: *mut *mut c_void,
 ) -> HRESULT {
-    if ppv.is_null() {
-        return -2147024809;
-    }
-    let iid = unsafe { &*riid };
-    if *iid == IID_IUNKNOWN || *iid == IID_ITF_KEY_EVENT_SINK {
-        unsafe {
-            *ppv = this;
-            ks_add_ref(this);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if ppv.is_null() {
+            return -2147024809;
         }
-        return S_OK;
+        let iid = unsafe { &*riid };
+        if *iid == IID_IUNKNOWN || *iid == IID_ITF_KEY_EVENT_SINK {
+            unsafe {
+                *ppv = this;
+                ks_add_ref(this);
+            }
+            return S_OK;
+        }
+        unsafe {
+            *ppv = std::ptr::null_mut();
+        }
+        -2147467263
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => E_FAIL,
     }
-    unsafe {
-        *ppv = std::ptr::null_mut();
-    }
-    -2147467263
 }
 
 unsafe extern "system" fn ks_add_ref(this: *mut c_void) -> ULONG {
-    let s = unsafe { &*(this as *const KeyEventSink) };
-    s.ref_count.fetch_add(1, Ordering::AcqRel) as ULONG + 1
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let s = unsafe { &*(this as *const KeyEventSink) };
+        s.ref_count.fetch_add(1, Ordering::AcqRel) as ULONG + 1
+    }))
+    .unwrap_or_default()
 }
 
 unsafe extern "system" fn ks_release(this: *mut c_void) -> ULONG {
-    let s = unsafe { &*(this as *const KeyEventSink) };
-    s.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let s = unsafe { &*(this as *const KeyEventSink) };
+        s.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1
+    }))
+    .unwrap_or_default()
 }
 
 // ========== TextService COM ==========
@@ -300,60 +314,73 @@ unsafe extern "system" fn ts_qi(
     riid: *const Guid,
     ppv: *mut *mut c_void,
 ) -> HRESULT {
-    if ppv.is_null() {
-        return -2147024809;
-    }
-    let iid = unsafe { &*riid };
-    crate::log::log(&format!(
-        "ts_qi riid={:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
-        iid.data1, iid.data2, iid.data3, iid.data4[0], iid.data4[1], iid.data4[2], iid.data4[3],
-        iid.data4[4], iid.data4[5], iid.data4[6], iid.data4[7]
-    ));
-    if *iid == IID_IUNKNOWN
-        || *iid == IID_ITF_TEXT_INPUT_PROCESSOR
-        || *iid == IID_ITF_TEXT_INPUT_PROCESSOR_EX
-    {
-        unsafe {
-            *ppv = this;
-            ts_add_ref(this);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if ppv.is_null() {
+            return -2147024809;
         }
-        return S_OK;
-    }
-    if *iid == IID_ITF_KEY_EVENT_SINK {
-        // 返回独立的 KeyEventSink 对象（避免与 ITfTextInputProcessorEx 的
-        // vtable 布局冲突导致错误派发到激活函数）。
-        unsafe {
-            *ppv = std::ptr::addr_of!(KEY_EVENT_SINK) as *mut c_void;
-            ks_add_ref(*ppv);
+        let iid = unsafe { &*riid };
+        crate::log::log(&format!(
+            "ts_qi riid={:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
+            iid.data1, iid.data2, iid.data3, iid.data4[0], iid.data4[1], iid.data4[2], iid.data4[3],
+            iid.data4[4], iid.data4[5], iid.data4[6], iid.data4[7]
+        ));
+        if *iid == IID_IUNKNOWN
+            || *iid == IID_ITF_TEXT_INPUT_PROCESSOR
+            || *iid == IID_ITF_TEXT_INPUT_PROCESSOR_EX
+        {
+            unsafe {
+                *ppv = this;
+                ts_add_ref(this);
+            }
+            return S_OK;
         }
-        return S_OK;
+        if *iid == IID_ITF_KEY_EVENT_SINK {
+            // 返回独立的 KeyEventSink 对象（避免与 ITfTextInputProcessorEx 的
+            // vtable 布局冲突导致错误派发到激活函数）。
+            unsafe {
+                *ppv = std::ptr::addr_of!(KEY_EVENT_SINK) as *mut c_void;
+                ks_add_ref(*ppv);
+            }
+            return S_OK;
+        }
+        unsafe {
+            *ppv = std::ptr::null_mut();
+        }
+        -2147467263
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => E_FAIL,
     }
-    unsafe {
-        *ppv = std::ptr::null_mut();
-    }
-    -2147467263
 }
 
 pub(crate) unsafe extern "system" fn ts_add_ref(this: *mut c_void) -> ULONG {
-    let ts = unsafe { &*(this as *const TextService) };
-    ts.ref_count.fetch_add(1, Ordering::AcqRel) as ULONG + 1
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let ts = unsafe { &*(this as *const TextService) };
+        ts.ref_count.fetch_add(1, Ordering::AcqRel) as ULONG + 1
+    }))
+    .unwrap_or_default()
 }
 
 unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
-    let ts = unsafe { &*(this as *const TextService) };
-    let count = ts.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1;
-    if count == 0 {
-        TEXT_SERVICE_COUNT.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
-        unsafe {
-            let _ = Box::from_raw(this as *mut TextService);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let ts = unsafe { &*(this as *const TextService) };
+        let count = ts.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1;
+        if count == 0 {
+            TEXT_SERVICE_COUNT.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+            unsafe {
+                let _ = Box::from_raw(this as *mut TextService);
+            }
         }
-    }
-    count
+        count
+    }))
+    .unwrap_or_default()
 }
 
 // ========== ITfTextInputProcessorEx ==========
 
 unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid: u32) -> HRESULT {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     crate::log::log(&format!(
         "ts_activate this={:p} punk={:p} tid={}",
         this, punk, tid
@@ -465,9 +492,15 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
     }
 
     S_OK
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => E_FAIL,
+    }
 }
 
 unsafe extern "system" fn ts_deactivate(this: *mut c_void) -> HRESULT {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     crate::log::log(&format!("ts_deactivate this={:p}", this));
     let ts = unsafe { &mut *(this as *mut TextService) };
 
@@ -505,6 +538,11 @@ unsafe extern "system" fn ts_deactivate(this: *mut c_void) -> HRESULT {
     }
 
     S_OK
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => E_FAIL,
+    }
 }
 
 unsafe extern "system" fn ts_activate_ex(
@@ -513,13 +551,25 @@ unsafe extern "system" fn ts_activate_ex(
     tid: u32,
     _flags: u32,
 ) -> HRESULT {
-    unsafe { ts_activate(this, punk, tid) }
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe { ts_activate(this, punk, tid) }
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => E_FAIL,
+    }
 }
 
 // ========== ITfKeyEventSink ==========
 
 unsafe extern "system" fn ks_set_focus(_this: *mut c_void, _f: i32) -> HRESULT {
-    S_OK
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        S_OK
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => E_FAIL,
+    }
 }
 
 unsafe extern "system" fn ks_test_key_down(
@@ -529,6 +579,7 @@ unsafe extern "system" fn ks_test_key_down(
     _l_param: u32,
     pf_eaten: *mut i32,
 ) -> HRESULT {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     unsafe {
         *pf_eaten = 0;
     }
@@ -595,6 +646,11 @@ unsafe extern "system" fn ks_test_key_down(
     }
 
     S_OK
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => E_FAIL,
+    }
 }
 
 unsafe extern "system" fn ks_test_key_up(
@@ -604,10 +660,16 @@ unsafe extern "system" fn ks_test_key_up(
     _l: u32,
     pf_eaten: *mut i32,
 ) -> HRESULT {
-    unsafe {
-        *pf_eaten = 0;
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            *pf_eaten = 0;
+        }
+        S_OK
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => E_FAIL,
     }
-    S_OK
 }
 
 unsafe extern "system" fn ks_key_down(
@@ -617,6 +679,7 @@ unsafe extern "system" fn ks_key_down(
     _l_param: u32,
     pf_eaten: *mut i32,
 ) -> HRESULT {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     ensure_state_loaded();
     unsafe {
         *pf_eaten = 0;
@@ -699,6 +762,11 @@ unsafe extern "system" fn ks_key_down(
     crate::ipc::refresh_gui();
 
     S_OK
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => E_FAIL,
+    }
 }
 
 unsafe extern "system" fn ks_key_up(
@@ -708,10 +776,16 @@ unsafe extern "system" fn ks_key_up(
     _l: u32,
     pf_eaten: *mut i32,
 ) -> HRESULT {
-    unsafe {
-        *pf_eaten = 0;
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            *pf_eaten = 0;
+        }
+        S_OK
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => E_FAIL,
     }
-    S_OK
 }
 
 unsafe extern "system" fn ks_preserved_key(
@@ -720,8 +794,14 @@ unsafe extern "system" fn ks_preserved_key(
     _rguid: *const Guid,
     pf_eaten: *mut i32,
 ) -> HRESULT {
-    unsafe {
-        *pf_eaten = 0;
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            *pf_eaten = 0;
+        }
+        S_OK
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => E_FAIL,
     }
-    S_OK
 }
