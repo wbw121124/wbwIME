@@ -390,7 +390,10 @@ pub unsafe fn insert_text_at_caret(thread_mgr: *mut c_void, text: &str) -> bool 
 
 // ========== Public API ==========
 
+static CLIPBOARD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub fn clipboard_paste(text: &str) {
+    let _guard = CLIPBOARD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     unsafe {
         let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
         let size = wide.len() * 2;

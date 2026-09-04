@@ -237,6 +237,10 @@ impl WbwIme {
     fn snapshot(&mut self) -> GuiState {
         let window = self.host.window_manager().active_window();
         let selected_index = window.map(|w| w.selected_index()).unwrap_or(0);
+        let page_candidates = window
+            .map(|w| w.current_page_candidates().len())
+            .unwrap_or(0);
+        let selected_index = selected_index.min(page_candidates.saturating_sub(1));
         let page = window.map(|w| w.page()).unwrap_or(0);
         let total_pages = window.map(|w| w.total_pages()).unwrap_or(0);
         let candidates: Vec<String> = window
@@ -274,6 +278,13 @@ impl WbwIme {
     /// 切换中/英文模式
     fn toggle_mode(&mut self) -> GuiState {
         CHINESE_MODE.fetch_xor(true, std::sync::atomic::Ordering::Release);
+        if !self.host.buffer().is_empty() {
+            self.host.reset();
+            self.host
+                .window_manager_mut()
+                .active_window_mut()
+                .map(|w| w.hide());
+        }
         self.snapshot()
     }
 

@@ -341,8 +341,8 @@ fn apply_state_cursor(ui: &CandidateWindow, state: GuiState) {
     // TSF 模式：坐标已由 IPC 推送，无需额外定位
 }
 
-/// 待上屏文本（钩子线程提交，UI 线程异步粘贴）
-static PENDING_PASTE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// 待上屏文本队列（钩子线程提交，UI 线程异步粘贴）
+static PENDING_PASTE: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
 /// 剪贴板操作互斥锁（防止多线程同时操作剪贴板）
 static CLIPBOARD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -440,7 +440,7 @@ fn run_hook_mode(config: &GuiConfig) {
         if let Some(text) = state.committed.as_ref() {
             if !text.is_empty() {
                 wbw_ime_gui::logf!("hook commit text={:?} buffer={:?}", text, state.buffer);
-                *PENDING_PASTE.lock().unwrap() = Some(text.clone());
+                PENDING_PASTE.lock().unwrap().push(text.clone());
             }
         }
         let _ = tx2.send(state.clone());
@@ -459,7 +459,11 @@ fn run_hook_mode(config: &GuiConfig) {
             }
             apply_state_cursor(&ui_timer, state);
         }
-        if let Some(text) = PENDING_PASTE.lock().unwrap().take() {
+        let texts: Vec<String> = {
+            let mut guard = PENDING_PASTE.lock().unwrap_or_else(|e| e.into_inner());
+            std::mem::take(&mut *guard)
+        };
+        for text in texts {
             wbw_ime_gui::logf!("perform paste text={:?}", text);
             hook_paste(&text);
         }

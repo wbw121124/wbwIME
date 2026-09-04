@@ -26,15 +26,9 @@ static READER_RUNNING: AtomicBool = AtomicBool::new(false);
 ///
 /// 先按 DNSB 自身模块路径解析；失败时回退到当前工作目录。
 fn gui_exe_path() -> Option<std::path::PathBuf> {
-    // 用 DNSB 句柄查自身路径
     unsafe {
-        let module_name = [
-            0x77u16, 0x62, 0x77, 0x5F, 0x69, 0x6D, 0x65, 0x5F, 0x74, 0x73, 0x66, 0x2E, 0x64, 0x6C,
-            0x6C, 0,
-        ]; // "wbw_ime_tsf.dll\0"（utf-16 小写拼写，与文件名一致）
-        let handle = windows_sys::Win32::System::LibraryLoader::GetModuleHandleW(
-            module_name.as_ptr(),
-        );
+        let handle =
+            windows_sys::Win32::System::LibraryLoader::GetModuleHandleW(std::ptr::null());
         if handle.is_null() {
             return None;
         }
@@ -47,11 +41,11 @@ fn gui_exe_path() -> Option<std::path::PathBuf> {
         if len == 0 {
             return None;
         }
-        let dll_path = std::path::PathBuf::from(String::from_utf16_lossy(&buf[..len as usize]));
-        let dir = dll_path.parent()?;
-        let exe = dir.join("wbw-ime-gui.exe");
-        if exe.exists() {
-            Some(exe)
+        let exe_path = std::path::PathBuf::from(String::from_utf16_lossy(&buf[..len as usize]));
+        let dir = exe_path.parent()?;
+        let gui = dir.join("wbw-ime-gui.exe");
+        if gui.exists() {
+            Some(gui)
         } else {
             None
         }
@@ -143,8 +137,11 @@ fn spawn_reader(stream: TcpStream) {
         while let Ok(Some(msg)) = frame::read::<ToDll>(&mut reader) {
             handle_to_dll(msg);
         }
+        {
+            let mut stream = STREAM.lock().unwrap();
+            *stream = None;
+        }
         READER_RUNNING.store(false, Ordering::SeqCst);
-        *STREAM.lock().unwrap() = None;
     });
 }
 
@@ -253,7 +250,9 @@ pub fn refresh_gui() {
         Err(_) => return,
     };
     if let Some(stream) = guard.as_mut() {
-        let _ = frame::write(stream, &msg);
+        if frame::write(stream, &msg).is_err() {
+            *guard = None;
+        }
     }
 }
 

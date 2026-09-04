@@ -224,12 +224,12 @@ unsafe extern "system" fn ks_qi(
 
 unsafe extern "system" fn ks_add_ref(this: *mut c_void) -> ULONG {
     let s = unsafe { &*(this as *const KeyEventSink) };
-    s.ref_count.fetch_add(1, Ordering::Relaxed) as ULONG + 1
+    s.ref_count.fetch_add(1, Ordering::AcqRel) as ULONG + 1
 }
 
 unsafe extern "system" fn ks_release(this: *mut c_void) -> ULONG {
     let s = unsafe { &*(this as *const KeyEventSink) };
-    s.ref_count.fetch_sub(1, Ordering::Relaxed) as ULONG - 1
+    s.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1
 }
 
 // ========== TextService COM ==========
@@ -282,7 +282,7 @@ unsafe impl Sync for TextService {}
 
 impl TextService {
     pub fn new() -> *mut Self {
-        TEXT_SERVICE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        TEXT_SERVICE_COUNT.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         Box::into_raw(Box::new(Self {
             lp_vtbl: &TEXT_SERVICE_VTABLE,
             ref_count: AtomicI32::new(1),
@@ -336,14 +336,14 @@ unsafe extern "system" fn ts_qi(
 
 pub(crate) unsafe extern "system" fn ts_add_ref(this: *mut c_void) -> ULONG {
     let ts = unsafe { &*(this as *const TextService) };
-    ts.ref_count.fetch_add(1, Ordering::Relaxed) as ULONG + 1
+    ts.ref_count.fetch_add(1, Ordering::AcqRel) as ULONG + 1
 }
 
 unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
     let ts = unsafe { &*(this as *const TextService) };
-    let count = ts.ref_count.fetch_sub(1, Ordering::Relaxed) as ULONG - 1;
+    let count = ts.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1;
     if count == 0 {
-        TEXT_SERVICE_COUNT.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        TEXT_SERVICE_COUNT.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
         unsafe {
             let _ = Box::from_raw(this as *mut TextService);
         }

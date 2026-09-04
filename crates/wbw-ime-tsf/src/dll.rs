@@ -82,12 +82,12 @@ unsafe extern "system" fn cf_qi(
 
 unsafe extern "system" fn cf_add_ref(this: *mut c_void) -> ULONG {
     let f = unsafe { &*(this as *const ClassFactory) };
-    f.ref_count.fetch_add(1, Ordering::Relaxed) as ULONG + 1
+    f.ref_count.fetch_add(1, Ordering::AcqRel) as ULONG + 1
 }
 
 unsafe extern "system" fn cf_release(this: *mut c_void) -> ULONG {
     let f = unsafe { &*(this as *const ClassFactory) };
-    let count = f.ref_count.fetch_sub(1, Ordering::Relaxed) as ULONG - 1;
+    let count = f.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1;
     if count == 0 {
         unsafe {
             let _ = Box::from_raw(this as *mut ClassFactory);
