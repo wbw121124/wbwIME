@@ -16,6 +16,7 @@ use wbw_rank::Ranker;
 use wbw_types::{InputContext, InputMode, RankConfig};
 
 use crate::config::GuiConfig;
+use crate::hook::CHINESE_MODE;
 
 /// 按键处理后的 UI 状态，供 Qt 前端渲染
 #[derive(Debug, Clone, Default)]
@@ -244,7 +245,11 @@ impl WbwIme {
             total_pages,
             visible,
             committed: self.pending_commit.take(),
-            mode: "中".into(),
+            mode: if CHINESE_MODE.load(std::sync::atomic::Ordering::Acquire) {
+                "中".into()
+            } else {
+                "英".into()
+            },
         }
     }
 

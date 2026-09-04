@@ -46,7 +46,7 @@ const VK_NUMPAD0: u32 = 0x60;
 const VK_NUMPAD9: u32 = 0x69;
 
 /// 中文模式手动覆盖（Shift 键切换）。false = 跟随系统布局，true = 强制中文模式。
-static CHINESE_MODE: AtomicBool = AtomicBool::new(false);
+pub static CHINESE_MODE: AtomicBool = AtomicBool::new(false);
 
 /// 每个候选窗回调：处理一次按键，返回本次状态（供 UI 线程应用 + 决定是否吞键）。
 type KeyHandler = Box<dyn Fn(u32, Option<char>) -> GuiState + Send + Sync>;
@@ -110,7 +110,7 @@ unsafe extern "system" fn ll_keyboard_proc(
 
         // 同步本钩子线程 ID（仅占位，保留后续诊断能力）
         {
-            let mut slot = HOOK_THREAD_ID.lock().unwrap();
+            let mut slot = HOOK_THREAD_ID.lock().unwrap_or_else(|e| e.into_inner());
             if slot.is_none() {
                 let tid = windows_sys::Win32::System::Threading::GetCurrentThreadId();
                 *slot = Some(tid);
@@ -126,33 +126,33 @@ unsafe extern "system" fn ll_keyboard_proc(
                 }
                 // Shift 键切换中文模式（composing 时不切换，但仍然透传给引擎处理）
                 if vkey == VK_SHIFT {
-                    let eating = !EATEN_DOWN.lock().unwrap().is_empty();
+                    let eating = !EATEN_DOWN.lock().unwrap_or_else(|e| e.into_inner()).is_empty();
                     if !eating {
-                        let old = CHINESE_MODE.load(Ordering::Relaxed);
-                        CHINESE_MODE.store(!old, Ordering::Relaxed);
+                        let old = CHINESE_MODE.load(Ordering::Acquire);
+                        CHINESE_MODE.store(!old, Ordering::Release);
                         crate::logf!("hook Shift toggle chinese_mode={}", !old);
                     }
                     return CallNextHookEx(HHOOK::default(), code, wparam, lparam);
                 }
                 let chinese = is_chinese_foreground();
-                let eating = !EATEN_DOWN.lock().unwrap().is_empty();
+                let eating = !EATEN_DOWN.lock().unwrap_or_else(|e| e.into_inner()).is_empty();
                 if chinese && eating {
                     crate::logf!("hook keydown vk={} chinese=true eating=true", info.vkCode);
                 }
                 if chinese || eating {
                     let rotated = translate(&info.vkCode);
                     if let Some((code, ch)) = rotated {
-                        let eaten = process_key(code, ch);
-                        if eaten {
-                            EATEN_DOWN.lock().unwrap().push(info.vkCode);
-                            return 1;
-                        }
+                    let eaten = process_key(code, ch);
+                    if eaten {
+                        EATEN_DOWN.lock().unwrap_or_else(|e| e.into_inner()).push(info.vkCode);
+                        return 1;
+                    }
                     }
                 }
                 CallNextHookEx(HHOOK::default(), code, wparam, lparam)
             }
             WM_KEYUP => {
-                let mut eaten = EATEN_DOWN.lock().unwrap();
+                let mut eaten = EATEN_DOWN.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(pos) = eaten.iter().position(|v| *v == info.vkCode) {
                     eaten.remove(pos);
                     return 1;
@@ -186,7 +186,7 @@ fn is_system_chinese_layout() -> bool {
 
 /// 中文模式判断：系统键盘布局为中文，或手动 Shift 覆盖已开启。
 fn is_chinese_foreground() -> bool {
-    if CHINESE_MODE.load(Ordering::Relaxed) {
+    if CHINESE_MODE.load(Ordering::Acquire) {
         return true;
     }
     is_system_chinese_layout()

@@ -676,3 +676,37 @@ fn calc_window_width(candidates: &[String], font_size: f32, ...) -> f32 {
 2. `cargo test --release` 全部测试通过
 3. 实机验证：Shift 切换中英、候选窗口状态指示、小键盘数字键、英文模式直通、窗口宽度自适应
 4. 提交推送
+
+---
+
+## 代码审查修复（2026-09-04）
+
+### 高优先级
+
+| # | 问题 | 修复方案 |
+|---|------|----------|
+| H1 | Shift 键吃掉/切换时序不一致 | `ks_test_key_down` 中 Shift-down 不吃掉，改为在 `ks_key_down` 中检测 Shift-down 并切换 |
+| H2 | Mutex poisoning 导致宿主崩溃 | `IME_STATE.lock().unwrap()` → `.lock().unwrap_or_else(\|e\| e.into_inner())`；`TSF_CTX` 同理 |
+| H3 | hook.rs 钩子回调中 4 处 unwrap | 同 H2 改为 `unwrap_or_else` |
+| H4 | `hook_paste` 剪贴板竞争 | 剪贴板操作加 `Mutex` 守卫 |
+| H5 | `snapshot()` 硬编码 mode | 从全局 `CHINESE_MODE` 读取实际状态 |
+
+### 中优先级
+
+| # | 问题 | 修复方案 |
+|---|------|----------|
+| M1 | 方向键被吃但不处理 | `ks_test_key_down` composing 时不吃方向键 |
+| M2 | Ctrl/Alt 重置 composing 是死代码 | 从 `process_key` 移除 |
+| M3 | ToggleMode 后 refresh_gui TOCTOU | 合并为单次锁：toggle + 读状态 + refresh 在同一锁内 |
+| M4 | CHINESE_MODE Relaxed ordering | 改为 `Acquire`/`Release` |
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|----------|
+| `text_service.rs` | H1 + H2 + M1 + M2 |
+| `state.rs` | M2 |
+| `hook.rs` | H3 + M4 |
+| `main.rs` | H4 |
+| `engine.rs` | H5 |
+| `tsf/ipc.rs` | M3 |

@@ -37,7 +37,7 @@ unsafe impl Sync for TsfContext {}
 ///
 /// 保证返回值内部一致：要么都是激活态，要么都是清空态。
 pub fn current_tsf_ctx() -> (*mut c_void, u32) {
-    let ctx = TSF_CTX.lock().unwrap();
+    let ctx = TSF_CTX.lock().unwrap_or_else(|e| e.into_inner());
     (ctx.thread_mgr, ctx.client_id)
 }
 
@@ -62,7 +62,7 @@ pub fn ensure_state_loaded() {
     // 允许失败后下次按键时重试。
 
     // 已成功加载过，直接返回
-    if IME_STATE.lock().unwrap().is_some() {
+    if IME_STATE.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
         return;
     }
     // 仍在加载中（另一个线程正在尝试），也直接返回，避免并发重复 IO
@@ -94,7 +94,7 @@ pub fn ensure_state_loaded() {
                     "ensure_state_loaded: loaded from {}",
                     p.display()
                 ));
-                *IME_STATE.lock().unwrap() = Some(state);
+                *IME_STATE.lock().unwrap_or_else(|e| e.into_inner()) = Some(state);
                 return;
             }
         }
@@ -430,13 +430,13 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
     if hr != S_OK || keystroke_mgr.is_null() {
         crate::log::log("ts_activate: ITfKeystrokeMgr not available -> degraded, launch hook gui");
         ts.thread_mgr = thread_mgr;
-        *TSF_CTX.lock().unwrap() = TsfContext { thread_mgr, client_id: ts.client_id };
+        *TSF_CTX.lock().unwrap_or_else(|e| e.into_inner()) = TsfContext { thread_mgr, client_id: ts.client_id };
         crate::ipc::launch_hook_gui();
         return S_OK;
     }
 
     ts.thread_mgr = thread_mgr;
-    *TSF_CTX.lock().unwrap() = TsfContext { thread_mgr, client_id: ts.client_id };
+    *TSF_CTX.lock().unwrap_or_else(|e| e.into_inner()) = TsfContext { thread_mgr, client_id: ts.client_id };
 
     // 用独立的 KeyEventSink 对象做按键 sink，避免 vtable 布局冲突。
     let sink = std::ptr::addr_of!(KEY_EVENT_SINK) as *mut c_void;
@@ -453,7 +453,7 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
 
     if hr != S_OK {
         unsafe {
-            *TSF_CTX.lock().unwrap() = TsfContext::EMPTY;
+            *TSF_CTX.lock().unwrap_or_else(|e| e.into_inner()) = TsfContext::EMPTY;
             let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
                 std::mem::transmute(*(*(thread_mgr as *const *const usize)).add(2));
             release_fn(thread_mgr);
@@ -471,7 +471,7 @@ unsafe extern "system" fn ts_deactivate(this: *mut c_void) -> HRESULT {
 
     if !ts.thread_mgr.is_null() {
         // 先清全局上下文——防止 ks_key_down 等在释放 thread_mgr 后仍读取到悬空指针
-        *TSF_CTX.lock().unwrap() = TsfContext::EMPTY;
+        *TSF_CTX.lock().unwrap_or_else(|e| e.into_inner()) = TsfContext::EMPTY;
 
         let mut keystroke_mgr: *mut c_void = std::ptr::null_mut();
         let hr = unsafe {
@@ -542,21 +542,8 @@ unsafe extern "system" fn ks_test_key_down(
         return S_OK;
     }
 
-    // Shift 单击（vkey==0x10 且非 composing）：吃掉，由 ks_key_down 处理切换
+    // Shift 单击（vkey==0x10）：不吃，透传给 ks_key_down 处理切换
     if vkey == 0x10 {
-        let state = match IME_STATE.lock() {
-            Ok(s) => s,
-            Err(_) => return S_OK,
-        };
-        let state = match state.as_ref() {
-            Some(s) => s,
-            None => return S_OK,
-        };
-        if !state.composing {
-            unsafe {
-                *pf_eaten = 1;
-            }
-        }
         return S_OK;
     }
 
@@ -585,7 +572,6 @@ unsafe extern "system" fn ks_test_key_down(
             | 0x20        // Space
             | 0x0D        // Enter
             | 0x1B        // Esc
-            | 0x25..=0x28 // 方向键
             | 0x21        // PageUp
             | 0x22        // PageDown
         );

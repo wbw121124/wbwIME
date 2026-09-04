@@ -335,8 +335,12 @@ fn apply_state_cursor(ui: &CandidateWindow, state: GuiState) {
 /// 待上屏文本（钩子线程提交，UI 线程异步粘贴）
 static PENDING_PASTE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
+/// 剪贴板操作互斥锁（防止多线程同时操作剪贴板）
+static CLIPBOARD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// 剪贴板 + 模拟 Ctrl+V 粘贴（须在钩子线程执行，避免影响 UI 事件循环）
 fn hook_paste(text: &str) {
+    let _guard = CLIPBOARD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     wbw_ime_gui::logf!("hook_paste begin text={:?}", text);
     unsafe {
         use windows_sys::Win32::System::DataExchange::{

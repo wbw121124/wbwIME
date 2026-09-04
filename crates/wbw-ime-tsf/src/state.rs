@@ -154,12 +154,6 @@ impl ImeState {
     pub fn process_key(&mut self, vkey: u32) {
         self.commit_text = None;
 
-        // 修饰键（Ctrl/Alt）按下时，若正在 composing 则重置并透传
-        if (vkey == 0x11 || vkey == 0x12) && self.composing {
-            self.reset_composing();
-            return;
-        }
-
         match vkey {
             0x0D => {
                 // Enter
