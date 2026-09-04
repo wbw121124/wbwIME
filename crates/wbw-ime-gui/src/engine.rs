@@ -273,7 +273,7 @@ impl WbwIme {
 
     /// 切换中/英文模式
     fn toggle_mode(&mut self) -> GuiState {
-        CHINESE_MODE.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
+        CHINESE_MODE.fetch_xor(true, std::sync::atomic::Ordering::Release);
         self.snapshot()
     }
 

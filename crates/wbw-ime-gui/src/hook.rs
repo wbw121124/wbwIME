@@ -161,7 +161,10 @@ unsafe extern "system" fn ll_keyboard_proc(
                     if let Some((code, ch)) = rotated {
                     let eaten = process_key(code, ch);
                     if eaten {
-                        EATEN_DOWN.lock().unwrap_or_else(|e| e.into_inner()).push(info.vkCode);
+                        let mut eaten = EATEN_DOWN.lock().unwrap_or_else(|e| e.into_inner());
+                        if !eaten.contains(&info.vkCode) {
+                            eaten.push(info.vkCode);
+                        }
                         return 1;
                     }
                     }

@@ -157,7 +157,8 @@ impl ImeState {
         match vkey {
             0x0D => {
                 // Enter
-                if !self.buffer.is_empty() && !self.candidates.is_empty() {
+                if !self.buffer.is_empty() && !self.candidates.is_empty()
+                    && self.selected_index < self.candidates.len() {
                     self.commit_text = Some(self.candidates[self.selected_index].text.clone());
                     self.reset_composing();
                 }
@@ -212,7 +213,9 @@ impl ImeState {
                     // 英文模式且未在组合中：字母键透传
                     return;
                 }
-                self.buffer.push((vkey as u8 + 0x20) as char);
+                if self.buffer.len() < 32 {
+                    self.buffer.push((vkey as u8 + 0x20) as char);
+                }
                 self.update_candidates();
                 self.composing = true;
             }

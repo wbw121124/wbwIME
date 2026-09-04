@@ -1,7 +1,7 @@
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicI32, Ordering};
 
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU};
 
 use crate::guid::*;
 use crate::output;
@@ -544,8 +544,18 @@ unsafe extern "system" fn ks_test_key_down(
         return S_OK;
     }
 
-    // Shift 单击（vkey==0x10）：不吃，透传给 ks_key_down 处理切换
+    // Shift-down：在 test 阶段吃掉，阻止 TSF 透传，由 ks_key_down 处理切换
     if vkey == 0x10 {
+        // 非 composing 状态下 Shift-down 才触发切换（composing 时 Shift 作为组合键透传）
+        let is_composing = match IME_STATE.lock() {
+            Ok(s) => s.as_ref().map(|st| st.composing).unwrap_or(false),
+            Err(_) => false,
+        };
+        if !is_composing {
+            unsafe {
+                *pf_eaten = 1;
+            }
+        }
         return S_OK;
     }
 
@@ -630,9 +640,8 @@ unsafe extern "system" fn ks_key_down(
         return S_OK;
     }
 
-    // Shift 单击（vkey==0x10 且非 composing）：切换中英文模式
-    let shift = (GetKeyState(VK_SHIFT.into()) as u16 & 0x8000) != 0;
-    if vkey == 0x10 && !shift {
+    // Shift-down：切换中英文模式
+    if vkey == 0x10 {
         let mut guard = match IME_STATE.lock() {
             Ok(s) => s,
             Err(_) => return S_OK,
@@ -640,9 +649,6 @@ unsafe extern "system" fn ks_key_down(
         if let Some(state) = guard.as_mut() {
             if !state.composing {
                 state.toggle_chinese();
-                unsafe {
-                    *pf_eaten = 1;
-                }
             }
         }
         crate::ipc::refresh_gui();
