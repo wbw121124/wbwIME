@@ -67,9 +67,15 @@ pub unsafe extern "C" fn wbw_ime_create(dict_path: *const c_char) -> *mut WbwIme
         return ptr::null_mut();
     }
 
-    let path_str = match CStr::from_ptr(dict_path).to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
+    const MAX_CSTR_LEN: usize = 4096;
+    let path_str = {
+        let slice = std::slice::from_raw_parts(dict_path as *const u8, MAX_CSTR_LEN);
+        let end = slice.iter().position(|&b| b == 0).unwrap_or(MAX_CSTR_LEN);
+        let c_str = CStr::from_bytes_with_nul_unchecked(&slice[..=end]);
+        match c_str.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        }
     };
     let path = Path::new(path_str);
 
@@ -184,9 +190,15 @@ pub unsafe extern "C" fn wbw_ime_input_text(
         return ptr::null_mut();
     }
     let ime = &mut *ime;
-    let text_str = match CStr::from_ptr(text).to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
+    const MAX_CSTR_LEN: usize = 4096;
+    let text_str = {
+        let slice = std::slice::from_raw_parts(text as *const u8, MAX_CSTR_LEN);
+        let end = slice.iter().position(|&b| b == 0).unwrap_or(MAX_CSTR_LEN);
+        let c_str = CStr::from_bytes_with_nul_unchecked(&slice[..=end]);
+        match c_str.to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        }
     };
 
     let mut buffer = String::new();
@@ -392,7 +404,7 @@ unsafe fn convert_response(response: &ImeResponse, candidates: &[Candidate]) -> 
     Box::into_raw(Box::new(WbwImeResult {
         response_type,
         buffer: buffer.into_raw(),
-        cursor: (response.cursor as u32).min(response.buffer.len() as u32),
+        cursor: (response.cursor as u32).min(response.buffer.chars().count() as u32),
         candidates: candidates_ptr,
         candidate_count,
         need_refresh: response.need_refresh,
