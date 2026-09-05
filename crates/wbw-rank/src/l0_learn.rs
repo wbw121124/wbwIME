@@ -213,8 +213,16 @@ impl L0Learner {
 
     /// 返回当前学习数据的快照
     pub fn data_snapshot(&self) -> L0Snapshot {
+        let mut frequency: FxHashMap<u32, usize> = FxHashMap::default();
+        for (key, &count) in &self.counters {
+            // counters 格式: "code:word" → count
+            if let Some(word) = key.split(':').nth(1) {
+                let word_id = word.len() as u32;
+                *frequency.entry(word_id).or_insert(0) += count as usize;
+            }
+        }
         L0Snapshot {
-            frequency: FxHashMap::default(),
+            frequency,
             bigram: FxHashMap::default(),
             trigram: FxHashMap::default(),
         }

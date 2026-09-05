@@ -462,7 +462,7 @@ impl KeyStatsCollector {
     pub fn record_key(&mut self, key: &KeyEvent) {
         // 计算间隔（先计算，后增加计数，避免除零）
         if let Some(last_time) = self.last_key_time {
-            let interval = key.timestamp - last_time;
+            let interval = key.timestamp.saturating_sub(last_time);
             let total_intervals = self.stats.total_keys as f64;
             if total_intervals > 0.0 {
                 self.stats.avg_interval_ms = (self.stats.avg_interval_ms * (total_intervals - 1.0)

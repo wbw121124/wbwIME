@@ -196,7 +196,7 @@ impl SessionState {
             .unwrap_or_default()
             .as_secs();
 
-        now - self.last_active > timeout_secs
+        now.saturating_sub(self.last_active) > timeout_secs
     }
 
     /// 获取会话持续时间
@@ -206,7 +206,7 @@ impl SessionState {
             .unwrap_or_default()
             .as_secs();
 
-        now - self.created_at
+        now.saturating_sub(self.created_at)
     }
 }
 

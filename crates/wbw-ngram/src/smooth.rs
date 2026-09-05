@@ -59,7 +59,7 @@ impl Smoother {
         Self { config }
     }
 
-    /// 拉普拉斯平滑：(count + alpha) / (total + alpha * vocab_size)
+    /// 拉普拉斯平滑：(count + alpha) / (total + alpha)
     pub fn laplace(count: f64, total: f64, alpha: f64) -> f64 {
         if total + alpha <= 0.0 {
             return 0.0;
@@ -94,12 +94,15 @@ impl Smoother {
         match self.config.method {
             SmoothMethod::Laplace => Self::laplace(count, total, self.config.parameter),
             SmoothMethod::AddK => Self::add_k(count, total, self.config.parameter),
+            // Interpolation 尚未实现完整双阶插值，回退到 Laplace
             SmoothMethod::Interpolation => Self::laplace(count, total, self.config.parameter),
-            SmoothMethod::Backoff => Self::backoff(count, total, self.config.backoff_threshold),
-            SmoothMethod::GoodTuring => {
-                // Good-Turing 平滑尚未实现，回退到 Laplace 平滑
-                Self::laplace(count, total, self.config.parameter)
+            // Backoff 将 count/total 视为高阶概率，低阶回退到 Laplace
+            SmoothMethod::Backoff => {
+                let high = if total > 0.0 { count / total } else { 0.0 };
+                Self::backoff(high, Self::laplace(count, total, self.config.parameter), self.config.backoff_threshold)
             }
+            // Good-Turing 平滑尚未实现，回退到 Laplace 平滑
+            SmoothMethod::GoodTuring => Self::laplace(count, total, self.config.parameter),
         }
     }
 }
