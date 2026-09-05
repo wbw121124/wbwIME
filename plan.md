@@ -745,3 +745,40 @@ wbw-types:    0 passed (纯类型)
 - D-2: 统一 base_path 文件名（使用 pinyin.cin）
 - D-3: config.toml 补充缺失配置项
 - D-4: 勾选已完成的待办事项
+
+---
+
+## Round 3 综合审查（2026-09-04）
+
+### 代码问题
+
+| # | 严重性 | 问题 | 位置 |
+|---|--------|------|------|
+| L-1 | High | fbterm 大写字母未转小写，matcher 期望小写输入 | fbterm/main.rs:183 |
+| T-1 | Medium | config.toml smooth="kneser_ney" 与 NgramConfig.smooth: f64 类型不匹配 | config.toml + lib.rs |
+| T-2 | Medium | SmoothConfig 枚举不包含 kneser_ney | lib.rs |
+| P-1 | Medium | VALID_SYLLABLES 中 ü/v 使用不一致 | pinyin.rs |
+| A-1 | Medium | match_input 返回 Vec 而非 Iterator | matcher.rs |
+| C-1 | Medium | 错误类型碎片化，无统一 Error trait | error.rs |
+
+### 文档问题
+
+| # | 严重性 | 问题 | 位置 |
+|---|--------|------|------|
+| D-1 | Critical | config.toml smooth 类型错误（字符串 vs 数值） | config.toml |
+| D-2 | High | README ngram 配置示例与 config.toml 不同步 | README.md |
+| D-3 | Medium | plan.md 修复统计表重复矛盾 | plan.md |
+| D-4 | Medium | README 缺少 l0 section 和 model_path | README.md |
+
+### 修复计划
+
+#### Critical 优先级
+- D-1: config.toml smooth 改为正确的枚举值或数值
+
+#### High 优先级
+- L-1: fbterm 大写字母转小写
+
+#### Medium 优先级
+- D-2: README ngram 配置示例同步
+- D-3: 清理 plan.md 重复内容
+- D-4: README 补充缺失配置项
