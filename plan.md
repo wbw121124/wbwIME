@@ -803,3 +803,32 @@ wbw-types:    0 passed (纯类型)
 
 #### Low 优先级
 - R4-03: 统一 dict_path 默认值
+
+---
+
+## Round 5 最终审查（2026-09-04）
+
+### 代码问题
+
+| # | 严重性 | 问题 | 位置 |
+|---|--------|------|------|
+| R5-01 | High | wbw-ime-native cursor 计算使用字节长度而非字符数 | lib.rs:395 |
+| R5-02 | Medium | CStr::from_ptr 无长度限制 | lib.rs:70,187 |
+| R5-03 | Medium | CString unwrap_or_default 静默吞错 | lib.rs:281,303,355 |
+| R5-04 | Low | wbw-cli query 命令不接受 --dict 参数 | main.rs:418 |
+
+### 文档问题
+
+| # | 严重性 | 问题 | 位置 |
+|---|--------|------|------|
+| D5-01 | Medium | plan.md 测试结果与实际不符（125 vs 159） | plan.md |
+| D5-02 | Low | plan.md 重复内容需精简 | plan.md |
+
+### 修复计划
+
+#### High 优先级
+- R5-01: wbw-ime-native cursor 计算修正
+
+#### Medium 优先级
+- R5-02: CStr::from_ptr 添加长度限制
+- D5-01: 更新 plan.md 测试结果
