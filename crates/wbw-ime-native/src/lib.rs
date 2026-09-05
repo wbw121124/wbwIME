@@ -232,8 +232,8 @@ pub unsafe extern "C" fn wbw_ime_get_candidates(ime: *const WbwIme) -> *mut WbwI
     if ime.is_null() {
         return ptr::null_mut();
     }
-    let ime = &*ime;
-    // Return empty result with current candidates
+    // 返回当前候选列表（stub：非 InputChar 操作时宿主已维护候选状态）
+    let _ime = &*ime;
     let response = ImeResponse {
         response_type: ImeResponseType::ShowCandidates,
         text: None,

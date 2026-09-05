@@ -148,9 +148,9 @@ impl L0Learner {
             .collect()
     }
 
-    /// 应用学习结果
-    pub fn apply_learnings(&self) -> ImeResult<Vec<Candidate>> {
-        Ok(self
+    /// 应用学习结果（返回 Vec<Candidate>，不会失败）
+    pub fn apply_learnings(&self) -> Vec<Candidate> {
+        self
             .get_suggestions()
             .into_iter()
             .map(|s| Candidate {
@@ -161,7 +161,7 @@ impl L0Learner {
                 ngram_score: None,
                 user_weight: Some(s.confidence),
             })
-            .collect())
+            .collect()
     }
 
     /// 保存快照
@@ -447,7 +447,7 @@ mod tests {
         learner.record_selection("zhongguo", "中国");
         learner.record_selection("zhongguo", "中国");
 
-        let candidates = learner.apply_learnings().unwrap();
+        let candidates = learner.apply_learnings();
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].text, "中国");
         assert_eq!(candidates[0].code, "zhongguo");

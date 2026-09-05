@@ -5,7 +5,7 @@ use wbw_rank::Ranker;
 use wbw_types::{Candidate, InputContext, InputMode, RankConfig};
 
 pub struct ImeState {
-    pub _host: ImeHost,
+    pub host: ImeHost,
     pub matcher: Matcher,
     pub ranker: Ranker,
     pub buffer: String,
@@ -44,7 +44,7 @@ impl ImeState {
         let ranker = Ranker::new(RankConfig::default());
         let host = ImeHost::new(ImeConfig::default());
         Some(Self {
-            _host: host,
+            host: host,
             matcher,
             ranker,
             buffer: String::new(),
