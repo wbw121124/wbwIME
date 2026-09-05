@@ -92,7 +92,6 @@ impl FstDict {
         let mut sorted: Vec<DictEntry> = entries;
         sorted.sort_by(|a, b| a.code.cmp(&b.code).then_with(|| a.word.cmp(&b.word)));
 
-        let mut entry_count = 0usize;
         let mut code_set = HashSet::new();
 
         for entry in &sorted {
@@ -102,7 +101,6 @@ impl FstDict {
                 .map_err(|e| {
                     wbw_types::ImeError::BuildError(format!("FST 插入失败: {}", e))
                 })?;
-            entry_count += 1;
             code_set.insert(entry.code.clone());
         }
 
@@ -112,6 +110,7 @@ impl FstDict {
         let map = fst::Map::new(bytes).map_err(|e| {
             wbw_types::ImeError::ParseError(format!("FST map 构造失败: {}", e))
         })?;
+        let entry_count = map.len();
 
         Ok(Self {
             map,
@@ -149,7 +148,7 @@ impl FstDict {
                 results.push(DictEntry {
                     code: code.to_string(),
                     word: rest.to_string(),
-                    freq: freq as u32,
+                    freq: freq.try_into().unwrap_or(u32::MAX),
                     source: self.source,
                 });
             } else {
@@ -178,7 +177,7 @@ impl FstDict {
                     results.push(DictEntry {
                         code: code.to_string(),
                         word: word.to_string(),
-                        freq: freq as u32,
+                        freq: freq.try_into().unwrap_or(u32::MAX),
                         source: self.source,
                     });
                 } else if code > prefix {
@@ -226,7 +225,7 @@ impl FstDict {
                         DictEntry {
                             code: matched_code.to_string(),
                             word: word.to_string(),
-                            freq: freq as u32,
+                            freq: freq.try_into().unwrap_or(u32::MAX),
                             source: self.source,
                         },
                         dist,
@@ -275,7 +274,7 @@ impl FstDict {
         while let Some((key, freq)) = stream.next() {
             let key_str = String::from_utf8_lossy(key);
             if let Some(word) = key_str.split(KEY_SEP).nth(1) {
-                all_words.push((word.to_string(), freq as u32));
+                all_words.push((word.to_string(), freq.try_into().unwrap_or(u32::MAX)));
             }
         }
         all_words.sort_by_key(|w| Reverse(w.1));
@@ -322,7 +321,7 @@ impl FstDict {
                 entries.push(DictEntry {
                     code: key_str[..code_end].to_string(),
                     word: key_str[code_end + 1..].to_string(),
-                    freq: freq as u32,
+                    freq: freq.try_into().unwrap_or(u32::MAX),
                     source: self.source,
                 });
             }

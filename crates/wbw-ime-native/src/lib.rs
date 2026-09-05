@@ -223,6 +223,29 @@ pub unsafe extern "C" fn wbw_ime_input_text(
     convert_response(&response, &candidates)
 }
 
+/// 获取当前候选列表
+///
+/// # Safety
+/// `ime` 必须是有效指针。
+#[no_mangle]
+pub unsafe extern "C" fn wbw_ime_get_candidates(ime: *const WbwIme) -> *mut WbwImeResult {
+    if ime.is_null() {
+        return ptr::null_mut();
+    }
+    let ime = &*ime;
+    // Return empty result with current candidates
+    let response = ImeResponse {
+        response_type: ImeResponseType::ShowCandidates,
+        text: None,
+        candidates: vec![],
+        buffer: String::new(),
+        cursor: 0,
+        need_refresh: false,
+        need_hide: false,
+    };
+    convert_response(&response, &[])
+}
+
 // ========== 查询 ==========
 
 /// 获取当前状态

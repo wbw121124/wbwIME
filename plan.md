@@ -503,6 +503,31 @@ wbw-types:    0 passed (纯类型)
 
 ---
 
+## 第八轮审查（Round 8 Review）
+
+### 发现汇总
+- P0（关键Bug）：1 项
+- P1（逻辑错误）：3 项
+- P2（潜在风险）：3 项
+- P3（风格/注释）：2 项
+
+### 问题详情
+1. **P0**: `scorer.rs:109-110` — `perplexity()` 对已取 log 的概率再次调用 `.ln()`，导致 double-log 错误
+2. **P1**: `fst_dict.rs:95-106` — `from_entries()` 的 `entry_count` 未去重，重复插入会虚增计数
+3. **P1**: `fst_dict.rs:152` — `freq as u32` 截断 u64 值
+4. **P1**: `wbw-ime-native/lib.rs:157-168` — 非 InputChar 响应返回空候选列表
+5. **P2**: `l0_learn.rs:221` — `fxhash::hash(word) as u32` 截断导致碰撞
+6. **P2**: `scorer.rs:69-97` — `score_sequence` 文档误导（未说明 use_log_prob 影响返回值类型）
+7. **P2**: `candidate.rs:27` — `page_size=0` 时分页逻辑异常
+
+### 修复状态
+- [ ] 编写修复方案
+- [ ] 执行修复
+- [ ] cargo test 验证
+- [ ] git commit + push
+
+---
+
 ## 子代理审查规范（后续轮次）
 
 **重要：子代理在审查/修复时必须查阅依赖库官方文档。**

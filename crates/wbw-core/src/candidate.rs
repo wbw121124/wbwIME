@@ -24,8 +24,15 @@ impl CandidateList {
     /// 创建新的候选词列表
     pub fn new(candidates: Vec<Candidate>, page: usize, page_size: usize) -> Self {
         let total = candidates.len();
-        let has_next = (page + 1) * page_size < total;
-        let has_prev = page > 0;
+        let (has_next, has_prev) = if page_size == 0 {
+            // page_size=0 表示不分页，返回所有候选词
+            (false, false)
+        } else {
+            (
+                (page + 1) * page_size < total,
+                page > 0,
+            )
+        };
 
         Self {
             candidates,

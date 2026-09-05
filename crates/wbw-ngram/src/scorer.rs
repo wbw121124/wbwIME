@@ -68,7 +68,7 @@ impl NgramScorer {
 
     /// 评分序列：P(w1, w2, ..., wn) = Π P(wi | w1..wi-1)
     ///
-    /// 返回总对数概率。
+    /// 计算词序列的分数。当 `use_log_prob=true` 时返回 log-probability 之和，否则返回概率乘积。
     pub fn score_sequence(&self, words: &[&str]) -> f64 {
         let table = match &self.table {
             Some(t) => t,
@@ -103,10 +103,14 @@ impl NgramScorer {
             return 0.0;
         }
 
-        // 困惑度公式需要 log-probability，直接计算而不是依赖 score_sequence 的输出
+        let table = match &self.table {
+            Some(t) => t,
+            None => return 0.0,
+        };
+
         let mut total_log_prob = 0.0;
         for i in 0..words.len() {
-            let prob = self.score_word(&words[..i], words[i]);
+            let prob = table.conditional_probability(&words[..i], words[i]);
             total_log_prob += prob.max(1e-10).ln();
         }
         let n = words.len() as f64;
