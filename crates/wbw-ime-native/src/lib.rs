@@ -209,12 +209,13 @@ pub unsafe extern "C" fn wbw_ime_input_text(
         candidates = ime.ranker.rank(&matched);
     }
 
+    let buffer_len = buffer.len();
     let response = ImeResponse {
         response_type: ImeResponseType::InputChar,
         text: None,
         candidates: candidates.clone(),
         buffer,
-        cursor: 0,
+        cursor: buffer_len,
         need_refresh: true,
         need_hide: false,
     };
@@ -350,7 +351,7 @@ unsafe fn convert_response(response: &ImeResponse, candidates: &[Candidate]) -> 
         .iter()
         .map(|c| WbwCandidate {
             text: CString::new(c.text.clone()).unwrap_or_default().into_raw(),
-            code: ptr::null_mut(),
+            code: CString::new(c.code.clone()).unwrap_or_default().into_raw(),
             score: c.score,
         })
         .collect();

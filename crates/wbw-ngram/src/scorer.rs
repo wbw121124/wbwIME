@@ -103,9 +103,14 @@ impl NgramScorer {
             return 0.0;
         }
 
-        let log_prob = self.score_sequence(words);
+        // 困惑度公式需要 log-probability，直接计算而不是依赖 score_sequence 的输出
+        let mut total_log_prob = 0.0;
+        for i in 0..words.len() {
+            let prob = self.score_word(&words[..i], words[i]);
+            total_log_prob += prob.max(1e-10).ln();
+        }
         let n = words.len() as f64;
-        (-log_prob / n).exp()
+        (-total_log_prob / n).exp()
     }
 
     /// 批量评分
