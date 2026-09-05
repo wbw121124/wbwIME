@@ -451,6 +451,28 @@ wbw-types:    0 passed (纯类型)
 
 ---
 
+## 第六轮审查（Round 6 Review）
+
+### 发现汇总
+- P1（高）：1 项
+- P2（中）：2 项
+- P3（低）：1 项
+
+### 修复内容
+| # | 问题 | 文件 | 修复 |
+|---|------|------|------|
+| P1-1 | `OpenClipboard` 后错误路径未 `CloseClipboard` → 剪贴板全局锁死 | output.rs | 错误路径添加 `CloseClipboard()` |
+| P2-1 | TSF IPC `STREAM.lock().unwrap()` → 中毒后崩溃宿主 | tsf/ipc.rs | 改用 `unwrap_or_else(\|e\| e.into_inner())` |
+| P2-2 | GUI IPC `DLL_WRITER.lock().unwrap()` → 中毒后崩溃 GUI | gui/ipc.rs | 同上 |
+| P3-1 | `data_snapshot` bigram/trigram 永远为空（设计限制） | l0_learn.rs | 保留现状，调用方目前未使用 |
+
+### 状态
+- [x] 修复完成
+- [x] 159 tests 全部通过
+- [x] git commit + push（`89622cb`）
+
+---
+
 ## 子代理审查规范（后续轮次）
 
 **重要：子代理在审查/修复时必须查阅依赖库官方文档。**
