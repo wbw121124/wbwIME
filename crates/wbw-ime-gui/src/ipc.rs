@@ -51,7 +51,7 @@ fn handle_connection(stream: TcpStream, rx: Sender<ToGui>) {
     let writer = BufWriter::new(stream);
 
     {
-        let mut slot = DLL_WRITER.lock().unwrap();
+        let mut slot = DLL_WRITER.lock().unwrap_or_else(|e| e.into_inner());
         *slot = Some(writer);
     }
     CONNECTED.store(true, Ordering::SeqCst);
@@ -73,7 +73,7 @@ fn handle_connection(stream: TcpStream, rx: Sender<ToGui>) {
     }
 
     CONNECTED.store(false, Ordering::SeqCst);
-    DLL_WRITER.lock().unwrap().take();
+    DLL_WRITER.lock().unwrap_or_else(|e| e.into_inner()).take();
 }
 
 /// 向 DLL 发送一条点击消息。无连接或失败时静默忽略。
@@ -81,7 +81,7 @@ pub fn send(msg: &ToDll) {
     if !CONNECTED.load(Ordering::SeqCst) {
         return;
     }
-    let mut slot = DLL_WRITER.lock().unwrap();
+    let mut slot = DLL_WRITER.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(writer) = slot.as_mut() {
         if let Err(e) = frame::write(writer, msg) {
             eprintln!("[ipc] send to dll failed: {e}");

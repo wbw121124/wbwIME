@@ -411,9 +411,13 @@ pub fn clipboard_paste(text: &str) {
         }
         EmptyClipboard();
         let h_mem = GlobalAlloc(0x0002, size);
-        if h_mem.is_null() { return; }
+        if h_mem.is_null() {
+            CloseClipboard();
+            return;
+        }
         let ptr = GlobalLock(h_mem) as *mut u16;
         if ptr.is_null() {
+            CloseClipboard();
             return;
         }
         std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());

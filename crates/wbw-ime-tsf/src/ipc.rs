@@ -54,7 +54,7 @@ fn gui_exe_path() -> Option<std::path::PathBuf> {
 
 /// 确保已连接 GUI。若未连接：先尝试启动 GUI 进程（每会话一次），再连接。
 fn ensure_connected() -> bool {
-    if STREAM.lock().unwrap().is_some() {
+    if STREAM.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
         return true;
     }
     if !LAUNCHED.swap(true, Ordering::SeqCst) {
@@ -94,7 +94,7 @@ fn ensure_connected() -> bool {
                         return false;
                     }
                 });
-                *STREAM.lock().unwrap() = Some(stream);
+                *STREAM.lock().unwrap_or_else(|e| e.into_inner()) = Some(stream);
                 return true;
             }
             Err(_) => {
@@ -144,7 +144,7 @@ fn spawn_reader(stream: TcpStream) {
             handle_to_dll(msg);
         }
         {
-            let mut stream = STREAM.lock().unwrap();
+            let mut stream = STREAM.lock().unwrap_or_else(|e| e.into_inner());
             *stream = None;
         }
         READER_RUNNING.store(false, Ordering::SeqCst);
