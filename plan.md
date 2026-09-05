@@ -707,3 +707,41 @@ wbw-types:    0 passed (纯类型)
 - 涉及 FFI（`libc`, `std::ffi`）→ 查阅 Rust std docs
 - 涉及 TSF COM 接口 → 查阅微软 ITfTextInputProcessor 等官方文档
 - 不确定的 API 行为 → 先 `cargo doc` 或 webfetch 官方文档再下结论
+
+---
+
+## Round 2 深层安全审查（2026-09-04）
+
+### 代码问题
+
+| # | 严重性 | 问题 | 位置 |
+|---|--------|------|------|
+| L-1 | High | fbterm 字母键空范围（b'a'..=b'Z' 是空范围，字母输入全部失效） | fbterm/main.rs:183 |
+| C-2 | Medium | IME_STATE → STREAM 嵌套锁潜在死锁 | text_service.rs:694-700 |
+| B-1 | Medium | buffer 长度检查在插入前，CJK 多字节可能超过限制 | context.rs:50 |
+| R-2 | Medium | clipboard_paste GlobalLock 失败时未释放 h_mem | output.rs:413-431 |
+| F-3 | Low | wide.len() as i32 截断 | output.rs:252-253 |
+| C-4 | Low | IPC 读取线程竞态窗口 | tsf/ipc.rs:147-150 |
+
+### 文档问题
+
+| # | 严重性 | 问题 | 位置 |
+|---|--------|------|------|
+| D-1 | Medium | plan.md 修复统计表重复出现两次 | plan.md:183-275 |
+| D-2 | Medium | README base_path 文件名不一致（pinyin.cin vs base.cin） | README.md:75 vs lib.rs:285 |
+| D-3 | Medium | config.toml 缺少 user_dict_path 和 model_path | config.toml |
+| D-4 | Low | plan.md 3处待办事项未勾选 | plan.md:321,350,646 |
+
+### 修复计划
+
+#### High 优先级
+- L-1: fbterm 字母键空范围修复（b'a'..=b'z' + b'A'..=b'Z'）
+
+#### Medium 优先级
+- C-2: 评估 IME_STATE → STREAM 锁顺序，避免死锁
+- B-1: buffer 长度检查改为插入后
+- R-2: GlobalLock 失败时释放 h_mem
+- D-1: 清理 plan.md 重复内容
+- D-2: 统一 base_path 文件名（使用 pinyin.cin）
+- D-3: config.toml 补充缺失配置项
+- D-4: 勾选已完成的待办事项
