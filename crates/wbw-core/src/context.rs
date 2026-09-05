@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use wbw_types::{ImeResult, InputContext, InputMode};
+use wbw_types::{InputContext, InputMode};
 
 /// 缓冲区最大长度
 const MAX_BUFFER_LEN: usize = 128;
@@ -176,33 +176,6 @@ pub enum ContextEvent {
     Cancel,
     /// 撤销操作
     Undo,
-}
-
-/// 上下文事件处理函数类型
-type ContextEventHandlerFn = Box<dyn FnMut(&mut ContextManager, ContextEvent) -> ImeResult<()>>;
-
-/// 上下文事件处理器
-#[allow(dead_code)]
-pub struct ContextEventHandler {
-    /// 处理器函数
-    handler: ContextEventHandlerFn,
-}
-
-impl ContextEventHandler {
-    /// 创建新的事件处理器
-    pub fn new<F>(handler: F) -> Self
-    where
-        F: FnMut(&mut ContextManager, ContextEvent) -> ImeResult<()> + 'static,
-    {
-        Self {
-            handler: Box::new(handler),
-        }
-    }
-
-    /// 处理事件
-    pub fn handle(&mut self, context: &mut ContextManager, event: ContextEvent) -> ImeResult<()> {
-        (self.handler)(context, event)
-    }
 }
 
 /// 上下文快照

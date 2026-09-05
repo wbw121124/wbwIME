@@ -348,3 +348,53 @@ wbw-types:    0 passed (纯类型)
 - [x] IPC 单实例（多宿主只留一个 GUI）
 - [x] bind 失败不弹空窗
 - [ ] 实机验证（用户添加输入法并切换输入，观察候选窗口/按键/不再卡死）
+
+---
+
+## 第三轮审查（Round 3 Review）
+
+### 发现汇总
+- P0（逻辑/正确性）：6 项
+- P1（API设计）：4 项
+- P2（性能）：2 项
+- P3（死代码）：~15 项
+- P4（风格）：3 项
+
+### P0
+1. `wbw-ngram/src/scorer.rs` NgramScorer::score() 调用不存在方法 `conditional_probability`，编译必报错
+2. `wbw-ngram/src/scorer.rs` build() 中 `self.m` 移出 Copy struct 后仍使用 `self.m`
+3. `wbw-ngram/src/scorer.rs` t() 和 backoff() 需要可变引用，但 ScoreContext/&self 同时持有 &self 引用 → borrow conflict
+4. `wbw-rank/src/l0_learn.rs` L0Learner 没有 `data_snapshot()` 方法，ranker.rs 调用必报错
+5. `wbw-rank/src/l0_learn.rs` measure_ms() 应使用 checked_div 防止除零
+6. `crates/wbw-dict/src/builder.rs` builder tests #[cfg(test)] 写在 mod dict_name 外面，永远不会被编译
+
+### P1
+1. `wbw-ngram/src/smooth.rs` laplace() 缺少 vocab_size 参数，公式不完整
+2. `wbw-ngram/src/scorer.rs` Interpolation::new 中 params.shift(2) 会 panic
+3. `wbw-core/src/candidate.rs` deduplicate() 文档声称按最高分保留，但 Vec 无序 → 未排序直接 pop()
+4. `wbw-core/src/candidate.rs` deduplicate() 使用 unstable feature const_generics
+
+### P2
+1. `wbw-dict/src/fst_dict.rs` stats() 每次调用扫描全词典，O(n) 无缓存
+2. `wbw-dict/src/fst_dict.rs` has() 方法移除后泛型 fallback FstWord 实现悬空
+
+### P3（死代码，批量删除）
+- `wbw-core/src/candidate.rs`: has_next, has_prev, start, num_candidates (pub 字段), deduplicate uses unstable
+- `wbw-core/src/context.rs`: ContextEventHandler trait
+- `wbw-core/src/session.rs`: SessionEventListener trait, SessionStatsCollector
+- `wbw-core/src/error.rs`: FallbackExecutor, RecoveryStrategy::Ignore=Fallback
+- `wbw-imekit/src/candidate_window.rs`: CandidateWindowError 枚举
+- `wbw-imekit/src/ime_host.rs`: ImeHostError 枚举
+- `wbw-imekit/src/key_mapper.rs`: KeyMapperError 枚举
+- `wbw-ime-native/src/lib.rs`: convert_response 中 cursor 无限截断逻辑
+- `benches/benchmark.rs`: 6 个 todo!() 占位函数
+
+### P4
+- scorer.rs 文档/空格清理
+- CandidateEntity 文档无实际约束
+
+### 修复状态
+- [ ] 编写修复方案
+- [ ] 执行修复
+- [ ] cargo test 验证
+- [ ] git commit + push

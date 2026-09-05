@@ -1,24 +1,6 @@
 //! 候选窗口模块
 
-use thiserror::Error;
 use wbw_types::{Candidate, ImeResult};
-
-/// 候选窗口错误类型
-#[allow(dead_code)]
-#[derive(Error, Debug)]
-pub enum CandidateWindowError {
-    #[error("窗口初始化失败: {0}")]
-    InitError(String),
-
-    #[error("窗口更新失败: {0}")]
-    UpdateError(String),
-
-    #[error("窗口显示失败: {0}")]
-    ShowError(String),
-
-    #[error("窗口隐藏失败: {0}")]
-    HideError(String),
-}
 
 /// 候选窗口位置
 #[derive(Debug, Clone)]

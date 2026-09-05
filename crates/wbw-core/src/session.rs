@@ -223,30 +223,6 @@ pub enum SessionEvent {
     Error(u64, String),
 }
 
-/// 会话事件监听器
-#[allow(dead_code)]
-pub struct SessionEventListener {
-    /// 监听器函数
-    listener: Box<dyn FnMut(SessionEvent)>,
-}
-
-impl SessionEventListener {
-    /// 创建新的事件监听器
-    pub fn new<F>(listener: F) -> Self
-    where
-        F: FnMut(SessionEvent) + 'static,
-    {
-        Self {
-            listener: Box::new(listener),
-        }
-    }
-
-    /// 处理事件
-    pub fn on_event(&mut self, event: SessionEvent) {
-        (self.listener)(event);
-    }
-}
-
 /// 会话统计信息
 #[derive(Debug, Clone, Default)]
 pub struct SessionStats {
@@ -260,65 +236,4 @@ pub struct SessionStats {
     pub avg_candidates: f64,
     /// 总输入字符数
     pub total_chars: usize,
-}
-
-/// 会话统计收集器
-#[allow(dead_code)]
-pub struct SessionStatsCollector {
-    /// 统计信息
-    stats: SessionStats,
-    /// 会话时长记录
-    durations: Vec<u64>,
-    /// 候选词数量记录
-    candidate_counts: Vec<usize>,
-}
-
-impl SessionStatsCollector {
-    /// 创建新的统计收集器
-    pub fn new() -> Self {
-        Self {
-            stats: SessionStats::default(),
-            durations: Vec::new(),
-            candidate_counts: Vec::new(),
-        }
-    }
-
-    /// 记录会话创建
-    pub fn record_session_created(&mut self) {
-        self.stats.total_sessions += 1;
-        self.stats.active_sessions += 1;
-    }
-
-    /// 记录会话关闭
-    pub fn record_session_closed(&mut self, duration_secs: u64, candidate_count: usize) {
-        self.stats.active_sessions = self.stats.active_sessions.saturating_sub(1);
-        self.durations.push(duration_secs);
-        self.candidate_counts.push(candidate_count);
-
-        // 更新平均值
-        if !self.durations.is_empty() {
-            self.stats.avg_duration_secs =
-                self.durations.iter().sum::<u64>() as f64 / self.durations.len() as f64;
-        }
-        if !self.candidate_counts.is_empty() {
-            self.stats.avg_candidates = self.candidate_counts.iter().sum::<usize>() as f64
-                / self.candidate_counts.len() as f64;
-        }
-    }
-
-    /// 记录输入字符
-    pub fn record_chars(&mut self, count: usize) {
-        self.stats.total_chars += count;
-    }
-
-    /// 获取统计信息
-    pub fn stats(&self) -> &SessionStats {
-        &self.stats
-    }
-}
-
-impl Default for SessionStatsCollector {
-    fn default() -> Self {
-        Self::new()
-    }
 }

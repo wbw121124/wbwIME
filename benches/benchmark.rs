@@ -1,86 +1,214 @@
 #![allow(unused_imports, dead_code, unreachable_code)]
 
-//! wbwIME 性能基准测试
-
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::path::Path;
 
-/// 测试词典路径
 const TEST_DICT_PATH: &str = "resources/dicts/base.cin";
 
-/// 词典加载基准测试
 fn bench_dict_load(c: &mut Criterion) {
-    // TODO: 实现词典加载基准测试
-    todo!("实现词典加载基准测试")
+    let dict_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join(TEST_DICT_PATH);
+    if !dict_path.exists() {
+        return;
+    }
+    c.bench_function("dict_load_cin", |b| {
+        b.iter(|| {
+            let parser = wbw_dict::CinParser::new(dict_path.to_str().unwrap());
+            black_box(parser.parse());
+        });
+    });
 }
 
-/// 拼音匹配基准测试
 fn bench_pinyin_match(c: &mut Criterion) {
-    // TODO: 实现拼音匹配基准测试
-    todo!("实现拼音匹配基准测试")
+    c.bench_function("pinyin_is_valid_pinyin", |b| {
+        b.iter(|| {
+            black_box(wbw_matcher::PinyinValidator::is_valid_pinyin(black_box(
+                "zhongguorenmin",
+            )));
+        });
+    });
 }
 
-/// 模糊匹配基准测试
 fn bench_fuzzy_match(c: &mut Criterion) {
-    // TODO: 实现模糊匹配基准测试
-    todo!("实现模糊匹配基准测试")
+    let matcher = wbw_matcher::FuzzyMatcher::pinyin_default();
+    c.bench_function("fuzzy_generate_variants", |b| {
+        b.iter(|| {
+            black_box(matcher.generate_variants(black_box("zongguo")));
+        });
+    });
 }
 
-/// 候选词排序基准测试
 fn bench_candidate_ranking(c: &mut Criterion) {
-    // TODO: 实现候选词排序基准测试
-    todo!("实现候选词排序基准测试")
+    let candidates = vec![
+        wbw_types::Candidate {
+            text: "中国".into(),
+            code: "zhongguo".into(),
+            score: 100.0,
+            source: wbw_types::CandidateSource::System,
+            ngram_score: None,
+            user_weight: None,
+        },
+        wbw_types::Candidate {
+            text: "终于".into(),
+            code: "zhongyu".into(),
+            score: 50.0,
+            source: wbw_types::CandidateSource::System,
+            ngram_score: None,
+            user_weight: None,
+        },
+        wbw_types::Candidate {
+            text: "钟".into(),
+            code: "zhong".into(),
+            score: 80.0,
+            source: wbw_types::CandidateSource::System,
+            ngram_score: None,
+            user_weight: None,
+        },
+    ];
+    let ranker = wbw_rank::Ranker::new(wbw_types::RankConfig::default());
+    c.bench_function("candidate_ranking_3", |b| {
+        b.iter(|| {
+            black_box(ranker.rank(black_box(&candidates)));
+        });
+    });
 }
 
-/// N-gram 评分基准测试
 fn bench_ngram_scoring(c: &mut Criterion) {
-    // TODO: 实现 N-gram 评分基准测试
-    todo!("实现 N-gram 评分基准测试")
+    use smallvec::SmallVec;
+    let mut builder = wbw_ngram::NgramTableBuilder::new(2);
+    builder.add_count(SmallVec::from_iter(["我".into()]), "爱".into(), 10);
+    builder.add_count(SmallVec::from_iter(["爱".into()]), "中国".into(), 8);
+    builder.add_count(SmallVec::from_iter(["我".into()]), "是".into(), 5);
+    let table = builder.build();
+    let scorer =
+        wbw_ngram::NgramScorer::new(wbw_ngram::ScorerConfig::default()).with_table(table);
+    c.bench_function("ngram_score_sequence", |b| {
+        b.iter(|| {
+            black_box(scorer.score_sequence(black_box(&["我", "爱", "中国"])));
+        });
+    });
 }
 
-/// 会话管理基准测试
 fn bench_session_management(c: &mut Criterion) {
-    // TODO: 实现会话管理基准测试
-    todo!("实现会话管理基准测试")
+    c.bench_function("session_create_close", |b| {
+        b.iter(|| {
+            let mut mgr = wbw_core::SessionManager::new();
+            let id = mgr.create_session();
+            black_box(mgr.close_session(id));
+        });
+    });
 }
 
-/// 输入上下文基准测试
 fn bench_input_context(c: &mut Criterion) {
-    // TODO: 实现输入上下文基准测试
-    todo!("实现输入上下文基准测试")
+    c.bench_function("context_push_8_chars", |b| {
+        b.iter(|| {
+            let mut ctx = wbw_core::ContextManager::new(1);
+            for ch in "zhongguo".chars() {
+                ctx.push_char(ch);
+            }
+            black_box(ctx.buffer());
+        });
+    });
 }
 
-/// 候选词窗口基准测试
 fn bench_candidate_window(c: &mut Criterion) {
-    // TODO: 实现候选词窗口基准测试
-    todo!("实现候选词窗口基准测试")
+    let candidates: Vec<wbw_types::Candidate> = (0..100)
+        .map(|i| wbw_types::Candidate {
+            text: format!("词{}", i),
+            code: format!("ci{}", i),
+            score: (100 - i) as f64,
+            source: wbw_types::CandidateSource::System,
+            ngram_score: None,
+            user_weight: None,
+        })
+        .collect();
+    c.bench_function("candidate_list_page_10", |b| {
+        b.iter(|| {
+            let list = wbw_core::CandidateList::new(candidates.clone(), 0, 10);
+            black_box(list.current_page());
+        });
+    });
 }
 
-/// 按键映射基准测试
 fn bench_key_mapping(c: &mut Criterion) {
-    // TODO: 实现按键映射基准测试
-    todo!("实现按键映射基准测试")
+    let segmenter = wbw_matcher::Segmenter::new();
+    c.bench_function("segmenter_segment", |b| {
+        b.iter(|| {
+            black_box(segmenter.segment(black_box("zhongguo")));
+        });
+    });
 }
 
-/// 完整输入流程基准测试
 fn bench_full_input_flow(c: &mut Criterion) {
-    // TODO: 实现完整输入流程基准测试
-    todo!("实现完整输入流程基准测试")
+    let dict_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join(TEST_DICT_PATH);
+    if !dict_path.exists() {
+        return;
+    }
+    let parser = wbw_dict::CinParser::new(dict_path.to_str().unwrap());
+    let cin_entries = parser.parse().unwrap();
+    let mut builder = wbw_dict::FstDictBuilder::new();
+    for cin_entry in &cin_entries {
+        for word_entry in &cin_entry.words {
+            builder.add_entry(wbw_dict::DictEntry {
+                code: cin_entry.code.clone(),
+                word: word_entry.word.clone(),
+                freq: word_entry.freq,
+                source: wbw_dict::DictSource::Base,
+            });
+        }
+    }
+    let dict = builder.build(wbw_dict::DictSource::Base).unwrap();
+    let mut matcher =
+        wbw_matcher::Matcher::with_dict(wbw_matcher::MatcherConfig::default(), dict);
+
+    c.bench_function("full_match_input", |b| {
+        b.iter(|| {
+            let ctx = wbw_types::InputContext {
+                buffer: "zhongguo".to_string(),
+                cursor: 0,
+                mode: wbw_types::InputMode::Pinyin,
+                selected: Vec::new(),
+                session_id: 0,
+            };
+            black_box(matcher.match_input(black_box(&ctx)));
+        });
+    });
 }
 
-/// 内存使用基准测试
 fn bench_memory_usage(c: &mut Criterion) {
-    // TODO: 实现内存使用基准测试
-    todo!("实现内存使用基准测试")
+    c.bench_function("dict_build_1000", |b| {
+        b.iter(|| {
+            let mut b = wbw_dict::FstDictBuilder::new();
+            for i in 0..1000 {
+                b.add_entry(wbw_dict::DictEntry {
+                    code: format!("code{}", i),
+                    word: format!("word{}", i),
+                    freq: i as u32,
+                    source: wbw_dict::DictSource::Base,
+                });
+            }
+            black_box(b.build(wbw_dict::DictSource::Base).unwrap());
+        });
+    });
 }
 
-/// 并发性能基准测试
 fn bench_concurrent_performance(c: &mut Criterion) {
-    // TODO: 实现并发性能基准测试
-    todo!("实现并发性能基准测试")
+    let matcher = wbw_matcher::FuzzyMatcher::pinyin_default();
+    let inputs = ["zongguo", "woshi", "zhongyu"];
+    c.bench_function("fuzzy_is_match_x3", |b| {
+        b.iter(|| {
+            for input in &inputs {
+                black_box(matcher.is_match(black_box(input), "zhongguo"));
+            }
+        });
+    });
 }
 
-/// 基准测试组
 criterion_group!(
     benches,
     bench_dict_load,
@@ -97,46 +225,4 @@ criterion_group!(
     bench_concurrent_performance,
 );
 
-/// 运行基准测试
 criterion_main!(benches);
-
-/// 辅助模块
-mod helpers {
-    use super::*;
-    use std::fs;
-    
-    /// 创建临时测试目录
-    pub fn create_temp_dir() -> std::path::PathBuf {
-        let temp_dir = std::env::temp_dir().join("wbwime_bench");
-        fs::create_dir_all(&temp_dir).unwrap();
-        temp_dir
-    }
-    
-    /// 清理临时测试目录
-    pub fn cleanup_temp_dir(path: &std::path::Path) {
-        if path.exists() {
-            fs::remove_dir_all(path).unwrap_or_default();
-        }
-    }
-    
-    /// 生成测试数据
-    pub fn generate_test_data(size: usize) -> Vec<String> {
-        (0..size)
-            .map(|i| format!("test_{}", i))
-            .collect()
-    }
-    
-    /// 生成测试候选词
-    pub fn generate_test_candidates(size: usize) -> Vec<wbw_types::Candidate> {
-        (0..size)
-            .map(|i| wbw_types::Candidate {
-                text: format!("词{}", i),
-                code: format!("ci{}", i),
-                score: (100 - i) as f64,
-                source: wbw_types::CandidateSource::System,
-                ngram_score: Some(0.5 + (i as f64 * 0.01)),
-                user_weight: None,
-            })
-            .collect()
-    }
-}

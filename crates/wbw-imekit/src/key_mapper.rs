@@ -1,22 +1,7 @@
 //! 按键映射模块
 
 use std::fmt;
-use thiserror::Error;
 use wbw_types::{ImeError, ImeResult};
-
-/// 按键映射错误类型
-#[allow(dead_code)]
-#[derive(Error, Debug)]
-pub enum KeyMapperError {
-    #[error("按键映射无效: {0}")]
-    InvalidMapping(String),
-
-    #[error("按键配置错误: {0}")]
-    ConfigError(String),
-
-    #[error("按键处理失败: {0}")]
-    ProcessingError(String),
-}
 
 /// 按键类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -90,7 +90,10 @@ pub unsafe extern "C" fn wbw_ime_create(dict_path: *const c_char) -> *mut WbwIme
             }
             builder.deduplicate();
             builder.sort();
-            builder.build_fst().ok()?
+            match builder.build_fst() {
+                Ok(d) => d,
+                Err(_) => return ptr::null_mut(),
+            }
         }
     };
 
@@ -365,7 +368,7 @@ unsafe fn convert_response(response: &ImeResponse, candidates: &[Candidate]) -> 
     Box::into_raw(Box::new(WbwImeResult {
         response_type,
         buffer: buffer.into_raw(),
-        cursor: response.cursor as u32,
+        cursor: (response.cursor as u32).min(response.buffer.len() as u32),
         candidates: candidates_ptr,
         candidate_count,
         need_refresh: response.need_refresh,

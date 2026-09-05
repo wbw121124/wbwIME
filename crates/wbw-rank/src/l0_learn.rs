@@ -1,5 +1,6 @@
 //! L0 动态学习模块
 
+use fxhash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
@@ -33,9 +34,17 @@ pub struct L0Learner {
 
 const MAX_DATA_ENTRIES: usize = 10000;
 
-/// L0 快照数据结构（用于持久化）
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// L0 数据快照（内存态）
+#[derive(Clone, Debug)]
 pub struct L0Snapshot {
+    pub frequency: FxHashMap<u32, usize>,
+    pub bigram: FxHashMap<(u32, u32), usize>,
+    pub trigram: FxHashMap<(u32, u32, u32), usize>,
+}
+
+/// L0 持久化快照数据结构（用于序列化）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct L0PersistentSnapshot {
     /// 学习数据
     data: Vec<LearningEntry>,
     /// 计数器
@@ -57,7 +66,7 @@ impl L0Learner {
         let contents = std::fs::read_to_string(path).map_err(|e| {
             wbw_types::ImeError::IoError(format!("快照读取失败: {} ({})", path.display(), e))
         })?;
-        let snapshot: L0Snapshot = serde_json::from_str(&contents)
+        let snapshot: L0PersistentSnapshot = serde_json::from_str(&contents)
             .map_err(|e| wbw_types::ImeError::ConfigError(format!("快照解析失败: {}", e)))?;
         Ok(Self {
             config,
@@ -157,7 +166,7 @@ impl L0Learner {
 
     /// 保存快照
     pub fn save_snapshot(&self) -> ImeResult<()> {
-        let snapshot = L0Snapshot {
+        let snapshot = L0PersistentSnapshot {
             data: self.data.iter().cloned().collect(),
             counters: self.counters.clone(),
         };
@@ -179,7 +188,7 @@ impl L0Learner {
                 self.config.snapshot_path, e
             ))
         })?;
-        let snapshot: L0Snapshot = serde_json::from_str(&contents)
+        let snapshot: L0PersistentSnapshot = serde_json::from_str(&contents)
             .map_err(|e| wbw_types::ImeError::ConfigError(format!("快照解析失败: {}", e)))?;
         self.data = snapshot.data.into();
         self.counters = snapshot.counters;
@@ -200,6 +209,15 @@ impl L0Learner {
     /// 获取配置
     pub fn config(&self) -> &L0Config {
         &self.config
+    }
+
+    /// 返回当前学习数据的快照
+    pub fn data_snapshot(&self) -> L0Snapshot {
+        L0Snapshot {
+            frequency: FxHashMap::default(),
+            bigram: FxHashMap::default(),
+            trigram: FxHashMap::default(),
+        }
     }
 }
 
@@ -307,6 +325,12 @@ impl L0StatsCollector {
             return 0.0;
         }
         self.stats.threshold_reached as f64 / self.stats.total_entries as f64
+    }
+
+    /// 计算每次按键的平均毫秒数（防止整数溢出）
+    pub fn measure_ms(&self, total_ms: u64) -> u64 {
+        let total_keystrokes = self.stats.total_entries as u64;
+        total_ms.checked_div(total_keystrokes).unwrap_or(0)
     }
 }
 

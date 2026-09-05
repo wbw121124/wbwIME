@@ -112,8 +112,6 @@ pub enum RecoveryStrategy {
     Retry,
     /// 回退到默认值
     Fallback,
-    /// 忽略错误继续
-    Ignore,
     /// 终止操作
     Abort,
 }
@@ -134,14 +132,9 @@ impl ErrorRecovery {
     {
         match strategy {
             RecoveryStrategy::Retry => {
-                // 重试一次：调用 fallback() 进行重试（F 为 FnOnce，只能调用一次）
                 fallback().map_err(|_| error.clone())
             }
             RecoveryStrategy::Fallback => fallback(),
-            RecoveryStrategy::Ignore => {
-                // 忽略错误并返回 fallback 默认值（泛型 T 无法显式构造，故调用 fallback() 作为折中）
-                fallback()
-            }
             RecoveryStrategy::Abort => Err(error.clone()),
         }
     }

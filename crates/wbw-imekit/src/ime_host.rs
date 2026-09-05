@@ -2,28 +2,7 @@
 
 use crate::candidate_window::CandidateWindowManager;
 use crate::key_mapper::{KeyAction, KeyEvent, KeyMapper};
-use thiserror::Error;
 use wbw_types::{Candidate, ImeResult, InputMode};
-
-/// IME 宿主错误类型
-#[allow(dead_code)]
-#[derive(Error, Debug)]
-pub enum ImeHostError {
-    #[error("初始化失败: {0}")]
-    InitError(String),
-
-    #[error("输入处理失败: {0}")]
-    InputError(String),
-
-    #[error("候选词处理失败: {0}")]
-    CandidateError(String),
-
-    #[error("配置错误: {0}")]
-    ConfigError(String),
-
-    #[error("状态错误: {0}")]
-    StateError(String),
-}
 
 /// IME 状态
 #[derive(Debug, Clone, PartialEq, Eq)]

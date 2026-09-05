@@ -11,3 +11,4 @@ serde.workspace = true
 serde_json.workspace = true
 lru.workspace = true
 thiserror.workspace = true
+fxhash = "0.2"
