@@ -427,7 +427,7 @@ fn run_hook_mode(config: &GuiConfig) {
     }
 
     let engine = WbwIme::new(config.clone(), config.page_size);
-    *ENGINE.lock().unwrap() = Some(engine);
+    *ENGINE.lock().unwrap_or_else(|e| e.into_inner()) = Some(engine);
 
     let ui: Rc<CandidateWindow> = CandidateWindow::new().unwrap().into();
     apply_config(&ui, config);
@@ -568,7 +568,7 @@ fn main() {
     let page_size = page_size_arg.unwrap_or(config.page_size);
     let engine = WbwIme::new(config.clone(), page_size);
 
-    *ENGINE.lock().unwrap() = Some(engine);
+    *ENGINE.lock().unwrap_or_else(|e| e.into_inner()) = Some(engine);
 
     let ui: Rc<CandidateWindow> = CandidateWindow::new().unwrap().into();
 
