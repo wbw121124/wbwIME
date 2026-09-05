@@ -461,7 +461,7 @@ fn run_hook_mode(config: &GuiConfig) {
         if let Some(text) = state.committed.as_ref() {
             if !text.is_empty() {
                 wbw_ime_gui::logf!("hook commit text={:?} buffer={:?}", text, state.buffer);
-                PENDING_PASTE.lock().unwrap().push(text.clone());
+                PENDING_PASTE.lock().unwrap_or_else(|e| e.into_inner()).push(text.clone());
             }
         }
         let _ = tx2.send(state.clone());
