@@ -181,7 +181,7 @@ impl FbtermIme {
                 }
             }
             b'a'..=b'z' | b'A'..=b'Z' => {
-                self.buffer.push(key as char);
+                self.buffer.push((key as char).to_ascii_lowercase());
                 self.update_candidates();
                 None
             }

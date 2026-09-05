@@ -74,6 +74,7 @@ cargo run --bin wbwime -- help
 [dict]
 base_path = "resources/dicts/pinyin.cin"   # 基础词典路径
 ngram_path = "resources/dicts/ngram.bin"  # N-gram 模型路径
+user_dict_path = "resources/dicts/user.txt" # 用户词典路径
 
 [matcher]
 fuzzy = true                              # 启用模糊匹配
@@ -91,8 +92,9 @@ threshold = 3                    # L0 学习触发阈值
 snapshot_path = "wbw_l0.json"   # 学习快照路径
 
 [ngram]
-order = 2       # N-gram 阶数
-smooth = 0.1    # 平滑参数
+order = 3                        # N-gram 阶数（2=bigram, 3=trigram）
+smooth = "kneser_ney"            # 平滑算法
+model_path = "resources/dicts/ngram.bin"  # N-gram 模型文件
 ```
 
 ## 码表格式

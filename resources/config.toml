@@ -34,6 +34,6 @@ snapshot_path = "wbw_l0.json"
 # N-gram 模型阶数（2=bigram, 3=trigram）
 order = 3
 # 平滑算法
-smooth = "kneser_ney"
+smooth = 0.1
 # N-gram 模型文件
 model_path = "resources/dicts/ngram.bin"
