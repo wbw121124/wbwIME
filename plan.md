@@ -782,3 +782,24 @@ wbw-types:    0 passed (纯类型)
 - D-2: README ngram 配置示例同步
 - D-3: 清理 plan.md 重复内容
 - D-4: README 补充缺失配置项
+
+---
+
+## Round 4 精细审查（2026-09-04）
+
+### 代码问题
+
+| # | 严重性 | 问题 | 位置 |
+|---|--------|------|------|
+| R4-01 | Medium | plan.md 统计表重复矛盾（40 vs 25） | plan.md:183-241 |
+| R4-02 | Medium | README smooth 类型错误（字符串 vs 数值） | README.md:96 |
+| R4-03 | Low | config.rs dict_path 默认值与 config.toml 不一致 | config.rs:37 |
+
+### 修复计划
+
+#### Medium 优先级
+- R4-01: 清理 plan.md 重复统计表
+- R4-02: README smooth 改为数值
+
+#### Low 优先级
+- R4-03: 统一 dict_path 默认值
