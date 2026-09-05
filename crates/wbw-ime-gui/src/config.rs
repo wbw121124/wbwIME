@@ -34,7 +34,7 @@ impl Default for GuiConfig {
     fn default() -> Self {
         Self {
             theme: "custom".to_string(),
-            dict_path: "resources/dicts/base.cin".to_string(),
+            dict_path: "resources/dicts/pinyin.cin".to_string(),
             page_size: 10,
             window: WindowConfig::default(),
             buffer_bar: BufferBarConfig::default(),
