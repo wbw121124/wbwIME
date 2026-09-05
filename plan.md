@@ -398,3 +398,31 @@ wbw-types:    0 passed (纯类型)
 - [x] 执行修复
 - [x] cargo test 验证（159 tests passed）
 - [x] git commit + push（`61e41df`）
+
+---
+
+## 第四轮审查（Round 4 Review）
+
+### 发现汇总
+- P0：0 项
+- P1（逻辑错误）：4 项
+- P2（溢出风险）：3 项
+- P3（代码质量）：2 项
+
+### 修复内容
+| # | 问题 | 文件 | 修复 |
+|---|------|------|------|
+| P1-1 | `data_snapshot()` 返回空 HashMap | l0_learn.rs | 从 `self.counters` 构建 frequency map |
+| P1-2 | `deduplicate()` 文档说"保留最高分"但实际保留首次 | candidate.rs | 修正文档为"保留首次出现的条目" |
+| P1-3 | `Smoother::apply()` Backoff 传入原始 counts 而非概率 | smooth.rs | 先计算 `count/total` 再传入 backoff() |
+| P1-4 | `laplace()` 文档提到 `vocab_size` 但实现无此参数 | smooth.rs | 修正文档匹配实际公式 |
+| P2-1 | `is_timeout()` u64 减法溢出 | session.rs | 改用 `saturating_sub` |
+| P2-2 | `duration_secs()` u64 减法溢出 | session.rs | 改用 `saturating_sub` |
+| P2-3 | `record_key()` timestamp 减法溢出 | key_mapper.rs | 改用 `saturating_sub` |
+| P3-1 | Interpolation 回退到 Laplace 无注释 | smooth.rs | 添加文档注释说明 |
+| P3-2 | GoodTuring/Backoff 是 stub 无注释 | smooth.rs | 添加注释说明 |
+
+### 状态
+- [x] 修复完成
+- [x] 159 tests 全部通过
+- [x] git commit + push（`79bc2a1`）
