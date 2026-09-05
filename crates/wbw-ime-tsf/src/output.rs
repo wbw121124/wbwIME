@@ -101,49 +101,55 @@ unsafe extern "system" fn es_qi(
     riid: *const Guid,
     ppv: *mut *mut c_void,
 ) -> HRESULT {
-    if ppv.is_null() {
-        return -2147024809;
-    }
-    let iid = unsafe { &*riid };
-    if *iid == IID_IUNKNOWN {
-        unsafe {
-            *ppv = _this;
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if ppv.is_null() {
+            return -2147024809;
         }
-        return S_OK;
-    }
-    unsafe {
-        *ppv = std::ptr::null_mut();
-    }
-    -2147467263
+        let iid = unsafe { &*riid };
+        if *iid == IID_IUNKNOWN {
+            unsafe {
+                *ppv = _this;
+            }
+            return S_OK;
+        }
+        unsafe {
+            *ppv = std::ptr::null_mut();
+        }
+        -2147467263
+    }))
+    .unwrap_or(-2147467259)
 }
 
 unsafe extern "system" fn es_add_ref(_this: *mut c_void) -> ULONG {
-    1
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| 1)).unwrap_or(0)
 }
 
 unsafe extern "system" fn es_release(_this: *mut c_void) -> ULONG {
-    0
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| 0)).unwrap_or(0)
 }
 
 /// `ITfEditSession::DoEditSession(ec)` —— 在同步会话里用合法 cookie 执行请求的任务。
 unsafe extern "system" fn es_do_edit_session(_this: *mut c_void, ec: u32) -> HRESULT {
-    let context = SESSION_CTX.with(|c| c.get());
-    if context.is_null() {
-        return S_OK;
-    }
-
-    let job = SESSION_JOB.with(|j| j.borrow_mut().take());
-    match job {
-        Some(SessionJob::Caret) => {
-            es_do_caret(context, ec);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let context = SESSION_CTX.with(|c| c.get());
+        if context.is_null() {
+            return S_OK;
         }
-        Some(SessionJob::Insert { wide }) => {
-            es_do_insert(context, ec, wide);
-        }
-        None => {}
-    }
 
-    S_OK
+        let job = SESSION_JOB.with(|j| j.borrow_mut().take());
+        match job {
+            Some(SessionJob::Caret) => {
+                es_do_caret(context, ec);
+            }
+            Some(SessionJob::Insert { wide }) => {
+                es_do_insert(context, ec, wide);
+            }
+            None => {}
+        }
+
+        S_OK
+    }))
+    .unwrap_or(-2147467259)
 }
 
 /// 在只读会话里用合法 cookie 取插入光标屏幕坐标。

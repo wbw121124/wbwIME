@@ -1,22 +1,35 @@
 [dict]
+# 基础词典路径，指向 .cin 格式的拼音码表文件
 base_path = "resources/dicts/pinyin.cin"
+# N-gram 语言模型文件路径，用于词频评分与上下文预测
 ngram_path = "resources/dicts/ngram.bin"
 
 [matcher]
+# 是否启用模糊匹配（bool）
 fuzzy = true
+# 模糊匹配规则列表，格式为 "原音->替换音"
 fuzzy_rules = ["z->zh", "c->ch", "s->sh", "n->l", "l->n"]
 
 [rank]
+# 拼音匹配得分权重（f64），权重越高排序越靠前
 pin_weight = 100.0
+# 用户自造词库权重（f64）
 user_weight = 10.0
+# 词频统计权重（f64）
 freq_weight = 1.0
+# N-gram 上下文评分权重（f64）
 ngram_weight = 0.5
+# 每次输入返回的最大候选词数量（usize）
 max_candidates = 10
 
 [l0]
+# L0 动态学习触发阈值，同一编码出现次数超过此值时提升权重（u32）
 threshold = 3
+# 学习快照持久化路径
 snapshot_path = "wbw_l0.json"
 
 [ngram]
+# N-gram 模型阶数（2=bigram, 3=trigram）
 order = 2
+# 拉普拉斯平滑参数（f64）
 smooth = 0.1

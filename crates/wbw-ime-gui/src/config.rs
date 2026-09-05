@@ -280,7 +280,10 @@ impl GuiConfig {
     pub fn from_file(path: &str) -> Self {
         match std::fs::read_to_string(path) {
             Ok(content) => Self::from_yaml(&content),
-            Err(_) => Self::default(),
+            Err(e) => {
+                eprintln!("[config] Failed to read {}: {}, using defaults", path, e);
+                Self::default()
+            }
         }
     }
 

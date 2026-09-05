@@ -58,42 +58,51 @@ unsafe extern "system" fn cf_qi(
     riid: *const Guid,
     ppv: *mut *mut c_void,
 ) -> HRESULT {
-    if ppv.is_null() {
-        return E_INVALIDARG;
-    }
-    let iid = unsafe { &*riid };
-    crate::log::log(&format!(
-        "cf_qi riid={:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
-        iid.data1, iid.data2, iid.data3, iid.data4[0], iid.data4[1], iid.data4[2], iid.data4[3],
-        iid.data4[4], iid.data4[5], iid.data4[6], iid.data4[7]
-    ));
-    if *iid == IID_IUNKNOWN || *iid == IID_ICLASSFACTORY {
-        unsafe {
-            *ppv = this;
-            cf_add_ref(this);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if ppv.is_null() {
+            return E_INVALIDARG;
         }
-        return S_OK;
-    }
-    unsafe {
-        *ppv = std::ptr::null_mut();
-    }
-    CLASS_E_CLASSNOTAVAILABLE
+        let iid = unsafe { &*riid };
+        crate::log::log(&format!(
+            "cf_qi riid={:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
+            iid.data1, iid.data2, iid.data3, iid.data4[0], iid.data4[1], iid.data4[2], iid.data4[3],
+            iid.data4[4], iid.data4[5], iid.data4[6], iid.data4[7]
+        ));
+        if *iid == IID_IUNKNOWN || *iid == IID_ICLASSFACTORY {
+            unsafe {
+                *ppv = this;
+                cf_add_ref(this);
+            }
+            return S_OK;
+        }
+        unsafe {
+            *ppv = std::ptr::null_mut();
+        }
+        CLASS_E_CLASSNOTAVAILABLE
+    }))
+    .unwrap_or(E_FAIL)
 }
 
 unsafe extern "system" fn cf_add_ref(this: *mut c_void) -> ULONG {
-    let f = unsafe { &*(this as *const ClassFactory) };
-    f.ref_count.fetch_add(1, Ordering::AcqRel) as ULONG + 1
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let f = unsafe { &*(this as *const ClassFactory) };
+        f.ref_count.fetch_add(1, Ordering::AcqRel) as ULONG + 1
+    }))
+    .unwrap_or(0)
 }
 
 unsafe extern "system" fn cf_release(this: *mut c_void) -> ULONG {
-    let f = unsafe { &*(this as *const ClassFactory) };
-    let count = f.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1;
-    if count == 0 {
-        unsafe {
-            let _ = Box::from_raw(this as *mut ClassFactory);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let f = unsafe { &*(this as *const ClassFactory) };
+        let count = f.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1;
+        if count == 0 {
+            unsafe {
+                let _ = Box::from_raw(this as *mut ClassFactory);
+            }
         }
-    }
-    count
+        count
+    }))
+    .unwrap_or(0)
 }
 
 unsafe extern "system" fn cf_create_instance(
@@ -102,36 +111,39 @@ unsafe extern "system" fn cf_create_instance(
     riid: *const Guid,
     ppv: *mut *mut c_void,
 ) -> HRESULT {
-    if ppv.is_null() {
-        return E_INVALIDARG;
-    }
-    let iid = unsafe { &*riid };
-    crate::log::log(&format!(
-        "cf_create_instance riid={:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
-        iid.data1, iid.data2, iid.data3, iid.data4[0], iid.data4[1], iid.data4[2], iid.data4[3],
-        iid.data4[4], iid.data4[5], iid.data4[6], iid.data4[7]
-    ));
-    if *iid == IID_IUNKNOWN
-        || *iid == IID_ITF_TEXT_INPUT_PROCESSOR
-        || *iid == IID_ITF_TEXT_INPUT_PROCESSOR_EX
-    {
-        let ts = TextService::new();
-        // new() 已将 ref_count 设为 1（对调用者的引用），不需要额外 AddRef。
-        // 也不对 factory AddRef——COM 规范：CreateInstance 的输出指针
-        // 由调用者通过 Release 释放，不持有 factory 的引用。
-        unsafe {
-            *ppv = ts as *mut c_void;
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if ppv.is_null() {
+            return E_INVALIDARG;
         }
-        return S_OK;
-    }
-    unsafe {
-        *ppv = std::ptr::null_mut();
-    }
-    E_NOTIMPL
+        let iid = unsafe { &*riid };
+        crate::log::log(&format!(
+            "cf_create_instance riid={:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
+            iid.data1, iid.data2, iid.data3, iid.data4[0], iid.data4[1], iid.data4[2], iid.data4[3],
+            iid.data4[4], iid.data4[5], iid.data4[6], iid.data4[7]
+        ));
+        if *iid == IID_IUNKNOWN
+            || *iid == IID_ITF_TEXT_INPUT_PROCESSOR
+            || *iid == IID_ITF_TEXT_INPUT_PROCESSOR_EX
+        {
+            let ts = TextService::new();
+            // new() 已将 ref_count 设为 1（对调用者的引用），不需要额外 AddRef。
+            // 也不对 factory AddRef——COM 规范：CreateInstance 的输出指针
+            // 由调用者通过 Release 释放，不持有 factory 的引用。
+            unsafe {
+                *ppv = ts as *mut c_void;
+            }
+            return S_OK;
+        }
+        unsafe {
+            *ppv = std::ptr::null_mut();
+        }
+        E_NOTIMPL
+    }))
+    .unwrap_or(E_FAIL)
 }
 
 unsafe extern "system" fn cf_lock_server(_this: *mut c_void, _lock: i32) -> HRESULT {
-    S_OK
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| S_OK)).unwrap_or(E_FAIL)
 }
 
 // ========== DLL 导出 ==========
@@ -170,158 +182,170 @@ pub unsafe extern "system" fn DllGetClassObject(
     _riid: *const Guid,
     ppv: *mut *mut c_void,
 ) -> HRESULT {
-    if rclsid.is_null() || ppv.is_null() {
-        return E_INVALIDARG;
-    }
-    let clsid = unsafe { &*rclsid };
-    if *clsid != CLSID_WBW_IME {
-        unsafe {
-            *ppv = std::ptr::null_mut();
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if rclsid.is_null() || ppv.is_null() {
+            return E_INVALIDARG;
         }
-        return CLASS_E_CLASSNOTAVAILABLE;
-    }
-    let factory = Box::into_raw(Box::new(ClassFactory {
-        lp_vtbl: &CLASS_FACTORY_VTABLE,
-        ref_count: AtomicI32::new(1),
-    }));
-    unsafe {
-        *ppv = factory as *mut c_void;
-    }
-    S_OK
+        let clsid = unsafe { &*rclsid };
+        if *clsid != CLSID_WBW_IME {
+            unsafe {
+                *ppv = std::ptr::null_mut();
+            }
+            return CLASS_E_CLASSNOTAVAILABLE;
+        }
+        let factory = Box::into_raw(Box::new(ClassFactory {
+            lp_vtbl: &CLASS_FACTORY_VTABLE,
+            ref_count: AtomicI32::new(1),
+        }));
+        unsafe {
+            *ppv = factory as *mut c_void;
+        }
+        S_OK
+    }))
+    .unwrap_or(E_FAIL)
 }
 
 /// # Safety
 /// 无特殊安全要求。
 #[no_mangle]
 pub unsafe extern "system" fn DllCanUnloadNow() -> HRESULT {
-    if text_service::TEXT_SERVICE_COUNT.load(std::sync::atomic::Ordering::SeqCst) == 0 {
-        S_OK
-    } else {
-        S_FALSE
-    }
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if text_service::TEXT_SERVICE_COUNT.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            S_OK
+        } else {
+            S_FALSE
+        }
+    }))
+    .unwrap_or(E_FAIL)
 }
 
 /// # Safety
 /// 写入注册表需要管理员权限。
 #[no_mangle]
 pub unsafe extern "system" fn DllRegisterServer() -> HRESULT {
-    let dll_path = get_dll_path();
-    if dll_path.as_os_str().is_empty() {
-        return E_UNEXPECTED;
-    }
-    let dll_path_str = dll_path.to_string_lossy();
-    // 图标与 DLL 同目录：\wbwime.ico
-    let icon_path = dll_path
-        .parent()
-        .map(|p| p.join("wbwime.ico"))
-        .unwrap_or_else(|| std::path::PathBuf::from("wbwime.ico"));
-    let icon_path_str = icon_path.to_string_lossy();
-
-    let clsid = "E8A3B0F2-1234-5678-9ABC-DEF012345678";
-    let mut failures: Vec<String> = Vec::new();
-    let write = |key: &str, name: &str, val: &str| -> Option<String> {
-        set_reg(key, name, val)
-            .err()
-            .map(|e| format!("{key}\\{name}: {e}"))
-    };
-    let write_dw = |key: &str, name: &str, val: u32| -> Option<String> {
-        set_reg_dword(key, name, val)
-            .err()
-            .map(|e| format!("{key}\\{name}: {e}"))
-    };
-
-    let mut put = |m: Option<String>| {
-        if let Some(m) = m {
-            failures.push(m);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let dll_path = get_dll_path();
+        if dll_path.as_os_str().is_empty() {
+            return E_UNEXPECTED;
         }
-    };
+        let dll_path_str = dll_path.to_string_lossy();
+        // 图标与 DLL 同目录：\wbwime.ico
+        let icon_path = dll_path
+            .parent()
+            .map(|p| p.join("wbwime.ico"))
+            .unwrap_or_else(|| std::path::PathBuf::from("wbwime.ico"));
+        let icon_path_str = icon_path.to_string_lossy();
 
-    // ---- COM 类注册 ----
-    put(write(&format!("SOFTWARE\\Classes\\CLSID\\{{{}}}", clsid), "", "wbwIME"));
-    put(write(
-        &format!("SOFTWARE\\Classes\\CLSID\\{{{}}}\\InprocServer32", clsid),
-        "",
-        &dll_path_str,
-    ));
-    // 修改：ThreadModel 必须位于 InprocServer32 子键下，而非 CLSID 根键
-    put(write(
-        &format!("SOFTWARE\\Classes\\CLSID\\{{{}}}\\InprocServer32", clsid),
-        "ThreadModel",
-        "Both",
-    ));
+        let clsid = "E8A3B0F2-1234-5678-9ABC-DEF012345678";
+        let mut failures: Vec<String> = Vec::new();
+        let write = |key: &str, name: &str, val: &str| -> Option<String> {
+            set_reg(key, name, val)
+                .err()
+                .map(|e| format!("{key}\\{name}: {e}"))
+        };
+        let write_dw = |key: &str, name: &str, val: u32| -> Option<String> {
+            set_reg_dword(key, name, val)
+                .err()
+                .map(|e| format!("{key}\\{name}: {e}"))
+        };
 
-    // ---- TSF TIP (ITfTextInputProcessor / 现代输入法) ----
-    let tip_key = format!("SOFTWARE\\Microsoft\\CTF\\TIP\\{{{}}}", clsid);
-    put(write(&tip_key, "Description", "wbwIME"));
-    put(write(&tip_key, "KeyboardLayout", "00000804"));
-    put(write(&tip_key, "IconFile", &icon_path_str));
-    put(write_dw(&tip_key, "IconIndex", 0));
-    put(write_dw(&tip_key, "Enable", 1));
+        let mut put = |m: Option<String>| {
+            if let Some(m) = m {
+                failures.push(m);
+            }
+        };
 
-    // 图标子键（部分系统从 CTF\...\Icon\IconIndex / IconFile 读取）
-    put(write(&format!("{}\\Icon", tip_key), "IconIndex", "0"));
-    put(write(&format!("{}\\Icon", tip_key), "IconFile", &icon_path_str));
-
-    // ---- 语言配置文件 ----
-    let profile_key = format!("{}\\LanguageProfile\\0x00000804\\{{{}}}", tip_key, clsid);
-    put(write(&profile_key, "Description", "wbwIME"));
-    put(write(&profile_key, "Display Description", "wbwIME"));
-    put(write_dw(&profile_key, "Enable", 1));
-    put(write_dw(&profile_key, "Install", 1));
-    // LanguageProfile ��ͼ�꣨���IMO�°�UI�����ڴ���ȡ��
-    put(write(&profile_key, "IconFile", &icon_path_str));
-    put(write_dw(&profile_key, "IconIndex", 0));
-
-    // ---- TSF Category ע�ᣨ�ؼ���ʹ���뷨�ɵ�ѡ�� �ǵ������棩 ----
-    // ģ�� RegisterCategory(tipclsid, catid, tipclsid) д��������ṹ��
-    //   Category\Category\{catid}\{CLSID}   Ĭ��ֵΪ��
-    //   Category\Item\{CLSID}\{catid}       Ĭ��ֵΪ��
-    // �ؼ�����ע�� GUID_TFCAT_TIP_KEYBOARD �ͣ�����ģʽ��
-    let category_guids: [&str; 7] = [
-        // GUID_TFCAT_TIP_KEYBOARD - �������뷨
-        "34745C63-B2F0-4784-8B67-5E12C8701A31",
-        // GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT - �����½�ģʽ�����"����"����
-        "13A016DF-560B-46CD-947A-4C3AF1E0E35D",
-        // GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT
-        "25504FB4-7BAB-4BC1-9C69-CF81890F0EF5",
-        // GUID_TFCAT_TIPCAP_UIELEMENTENABLED - UIԪ�أ�������
-        "49D2F9CF-1F5E-11D7-A6D3-00065B84435C",
-        // GUID_TFCAT_TIPCAP_SECUREMODE
-        "49D2F9CE-1F5E-11D7-A6D3-00065B84435C",
-        // GUID_TFCAT_TIPCAP_COMLESS
-        "364215D9-75BC-11D7-A6EF-00065B84435C",
-        // GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER - ��ʾ���ԣ���ϴ���»���
-        "046B8C80-1647-40F7-9B21-B93B81AABC1B",
-    ];
-    for cat in &category_guids {
+        // ---- COM 类注册 ----
+        put(write(&format!("SOFTWARE\\Classes\\CLSID\\{{{}}}", clsid), "", "wbwIME"));
         put(write(
-            &format!("{}\\Category\\Category\\{{{}}}\\{{{}}}", tip_key, cat, clsid),
+            &format!("SOFTWARE\\Classes\\CLSID\\{{{}}}\\InprocServer32", clsid),
             "",
-            "",
+            &dll_path_str,
         ));
+        // 修改：ThreadModel 必须位于 InprocServer32 子键下，而非 CLSID 根键
         put(write(
-            &format!("{}\\Category\\Item\\{{{}}}\\{{{}}}", tip_key, clsid, cat),
-            "",
-            "",
+            &format!("SOFTWARE\\Classes\\CLSID\\{{{}}}\\InprocServer32", clsid),
+            "ThreadModel",
+            "Both",
         ));
-    }
 
-    if failures.is_empty() {
-        S_OK
-    } else {
-        eprintln!("DllRegisterServer failures: {failures:?}");
-        E_FAIL
-    }
+        // ---- TSF TIP (ITfTextInputProcessor / 现代输入法) ----
+        let tip_key = format!("SOFTWARE\\Microsoft\\CTF\\TIP\\{{{}}}", clsid);
+        put(write(&tip_key, "Description", "wbwIME"));
+        put(write(&tip_key, "KeyboardLayout", "00000804"));
+        put(write(&tip_key, "IconFile", &icon_path_str));
+        put(write_dw(&tip_key, "IconIndex", 0));
+        put(write_dw(&tip_key, "Enable", 1));
+
+        // 图标子键（部分系统从 CTF\...\Icon\IconIndex / IconFile 读取）
+        put(write(&format!("{}\\Icon", tip_key), "IconIndex", "0"));
+        put(write(&format!("{}\\Icon", tip_key), "IconFile", &icon_path_str));
+
+        // ---- 语言配置文件 ----
+        let profile_key = format!("{}\\LanguageProfile\\0x00000804\\{{{}}}", tip_key, clsid);
+        put(write(&profile_key, "Description", "wbwIME"));
+        put(write(&profile_key, "Display Description", "wbwIME"));
+        put(write_dw(&profile_key, "Enable", 1));
+        put(write_dw(&profile_key, "Install", 1));
+        // LanguageProfile ��ͼ�꣨���IMO�°�UI�����ڴ���ȡ��
+        put(write(&profile_key, "IconFile", &icon_path_str));
+        put(write_dw(&profile_key, "IconIndex", 0));
+
+        // ---- TSF Category ע�ᣨ�ؼ���ʹ���뷨�ɵ�ѡ�� �ǵ������棩 ----
+        // ģ�� RegisterCategory(tipclsid, catid, tipclsid) д��������ṹ��
+        //   Category\Category\{catid}\{CLSID}   Ĭ��ֵΪ��
+        //   Category\Item\{CLSID}\{catid}       Ĭ��ֵΪ��
+        // �ؼ�����ע�� GUID_TFCAT_TIP_KEYBOARD �ͣ�����ģʽ��
+        let category_guids: [&str; 7] = [
+            // GUID_TFCAT_TIP_KEYBOARD - �������뷨
+            "34745C63-B2F0-4784-8B67-5E12C8701A31",
+            // GUID_TFCAT_TIPCAP_IMMERSIVESUPPORT - �����½�ģʽ�����"����"����
+            "13A016DF-560B-46CD-947A-4C3AF1E0E35D",
+            // GUID_TFCAT_TIPCAP_SYSTRAYSUPPORT
+            "25504FB4-7BAB-4BC1-9C69-CF81890F0EF5",
+            // GUID_TFCAT_TIPCAP_UIELEMENTENABLED - UIԪ�أ�������
+            "49D2F9CF-1F5E-11D7-A6D3-00065B84435C",
+            // GUID_TFCAT_TIPCAP_SECUREMODE
+            "49D2F9CE-1F5E-11D7-A6D3-00065B84435C",
+            // GUID_TFCAT_TIPCAP_COMLESS
+            "364215D9-75BC-11D7-A6EF-00065B84435C",
+            // GUID_TFCAT_DISPLAYATTRIBUTEPROVIDER - ��ʾ���ԣ���ϴ���»���
+            "046B8C80-1647-40F7-9B21-B93B81AABC1B",
+        ];
+        for cat in &category_guids {
+            put(write(
+                &format!("{}\\Category\\Category\\{{{}}}\\{{{}}}", tip_key, cat, clsid),
+                "",
+                "",
+            ));
+            put(write(
+                &format!("{}\\Category\\Item\\{{{}}}\\{{{}}}", tip_key, clsid, cat),
+                "",
+                "",
+            ));
+        }
+
+        if failures.is_empty() {
+            S_OK
+        } else {
+            eprintln!("DllRegisterServer failures: {failures:?}");
+            E_FAIL
+        }
+    }))
+    .unwrap_or(E_FAIL)
 }
 
 /// # Safety
 /// 删除注册表项需要管理员权限。
 #[no_mangle]
 pub unsafe extern "system" fn DllUnregisterServer() -> HRESULT {
-    let clsid = "E8A3B0F2-1234-5678-9ABC-DEF012345678";
-    let _ = del_reg(&format!("SOFTWARE\\Classes\\CLSID\\{{{}}}", clsid));
-    let _ = del_reg(&format!("SOFTWARE\\Microsoft\\CTF\\TIP\\{{{}}}", clsid));
-    S_OK
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let clsid = "E8A3B0F2-1234-5678-9ABC-DEF012345678";
+        let _ = del_reg(&format!("SOFTWARE\\Classes\\CLSID\\{{{}}}", clsid));
+        let _ = del_reg(&format!("SOFTWARE\\Microsoft\\CTF\\TIP\\{{{}}}", clsid));
+        S_OK
+    }))
+    .unwrap_or(E_FAIL)
 }
 
 // ========== 辅助函数 ==========

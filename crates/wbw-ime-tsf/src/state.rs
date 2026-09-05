@@ -44,7 +44,7 @@ impl ImeState {
         let ranker = Ranker::new(RankConfig::default());
         let host = ImeHost::new(ImeConfig::default());
         Some(Self {
-            host: host,
+            host,
             matcher,
             ranker,
             buffer: String::new(),

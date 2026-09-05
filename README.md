@@ -27,6 +27,11 @@ wbwIME/
 │   ├── wbw-core/           # 核心模块（会话、上下文、候选词）
 │   ├── wbw-rank/           # 排序模块（加权排序、L0 学习）
 │   ├── wbw-imekit/         # IME 宿主适配层
+│   ├── wbw-ime-native/     # Native IME 接口
+│   ├── wbw-ime-fbterm/     # FBTerm 终端适配
+│   ├── wbw-ime-tsf/        # Windows TSF 输入法 DLL
+│   ├── wbw-ime-ipc/        # IPC 通信协议
+│   ├── wbw-ime-gui/        # 图形候选窗口
 │   └── wbw-cli/            # 命令行工具
 ├── tests/                  # 集成测试
 ├── benches/                # 性能基准测试
@@ -67,7 +72,7 @@ cargo run --bin wbwime -- help
 
 ```toml
 [dict]
-base_path = "resources/dicts/base.cin"    # 基础词典路径
+base_path = "resources/dicts/pinyin.cin"   # 基础词典路径
 ngram_path = "resources/dicts/ngram.bin"  # N-gram 模型路径
 
 [matcher]
@@ -126,6 +131,13 @@ cargo fmt
 # 代码静态分析
 cargo clippy
 ```
+
+## Windows 安装
+
+1. 编译：`cargo build --release -p wbw-ime-tsf -p wbw-ime-gui`
+2. 复制 `target/release/wbw_ime_tsf.dll` 和 `target/release/wbw-ime-gui.exe` 到同一目录
+3. 注册 DLL：`regsvr32 wbw_ime_tsf.dll`（需管理员权限）
+4. 在 Windows 设置 → 时间和语言 → 语言 → 添加输入法 → 选择 wbwIME
 
 ## 许可证
 

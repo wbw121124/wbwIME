@@ -98,9 +98,9 @@ fn apply_state(ui: &CandidateWindow, state: GuiState) {
     let candidates: SharedVector<SharedString> =
         state.candidates.iter().map(|c| c.as_str().into()).collect();
     ui.set_candidates((&candidates[..]).into());
-    ui.set_selected_index(state.selected_index as i32);
-    ui.set_page(state.page as i32);
-    ui.set_total_pages(state.total_pages as i32);
+    ui.set_selected_index(state.selected_index.min(i32::MAX as usize) as i32);
+    ui.set_page(state.page.min(i32::MAX as usize) as i32);
+    ui.set_total_pages(state.total_pages.min(i32::MAX as usize) as i32);
     ui.set_input_mode(state.mode.as_str().into());
 
     if state.visible {
@@ -157,18 +157,24 @@ fn resolve_icon(value: &str) -> (slint::Image, String) {
 
 /// 解析 "#RRGGBB" / "#RRGGBBAA" 颜色，带透明度，失败回退白色；返回 Brush
 fn color(hex: &str, alpha: f64) -> slint::Brush {
-    let mut s = hex.trim().trim_start_matches('#');
-    if s.len() == 6 {
-        s = &s[..6];
+    let s = hex.trim().trim_start_matches('#');
+    // 验证长度
+    let s = match s.len() {
+        6 => s,
+        8 => &s[..6], // 忽略 alpha
+        _ => return slint::Brush::SolidColor(Color::from_rgb_u8(255, 255, 255)),
+    };
+    // 验证是否为合法十六进制
+    if s.chars().any(|c| !c.is_ascii_hexdigit()) {
+        return slint::Brush::SolidColor(Color::from_rgb_u8(255, 255, 255));
     }
     match u32::from_str_radix(s, 16) {
         Ok(v) => {
-            let r = (v >> 16) & 0xff;
-            let g = (v >> 8) & 0xff;
-            let b = v & 0xff;
-            let a = ((alpha.clamp(0.0, 1.0) * 255.0) as u32) & 0xff;
-            let encoded = (a << 24) | (r << 16) | (g << 8) | b;
-            slint::Brush::SolidColor(Color::from_argb_encoded(encoded))
+            let r = ((v >> 16) & 0xff) as u8;
+            let g = ((v >> 8) & 0xff) as u8;
+            let b = (v & 0xff) as u8;
+            let a = (alpha.clamp(0.0, 1.0) * 255.0) as u8;
+            slint::Brush::SolidColor(Color::from_argb_u8(a, r, g, b))
         }
         Err(_) => slint::Brush::SolidColor(Color::from_rgb_u8(255, 255, 255)),
     }
@@ -319,9 +325,9 @@ fn apply_ipc_show(ui: &CandidateWindow, msg: ToGui, config: &GuiConfig) {
     let vec: SharedVector<SharedString> =
         candidates.iter().map(|c| c.as_str().into()).collect();
     ui.set_candidates((&vec[..]).into());
-    ui.set_selected_index(selected as i32);
-    ui.set_page(page as i32);
-    ui.set_total_pages(total_pages as i32);
+    ui.set_selected_index(selected.min(i32::MAX as usize) as i32);
+    ui.set_page(page.min(i32::MAX as usize) as i32);
+    ui.set_total_pages(total_pages.min(i32::MAX as usize) as i32);
     ui.set_input_mode(mode.as_str().into());
 
     // 动态计算窗口宽度
