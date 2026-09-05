@@ -87,7 +87,13 @@ fn ensure_connected() -> bool {
                 let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(
                     wbw_ime_ipc::TIMEOUT_MS * 4,
                 )));
-                spawn_reader(stream.try_clone().expect("try_clone"));
+                spawn_reader(match stream.try_clone() {
+                    Ok(s) => s,
+                    Err(e) => {
+                        crate::log::log(&format!("ensure_connected: try_clone failed: {}", e));
+                        return false;
+                    }
+                });
                 *STREAM.lock().unwrap() = Some(stream);
                 return true;
             }

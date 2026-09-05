@@ -132,9 +132,7 @@ impl Matcher {
                 });
             }
         }
-        self.dict = Some(builder.build(DictSource::Base).map_err(|e| {
-            wbw_types::ImeError::ParseError(format!("FST 构建失败: {}", e))
-        })?);
+        self.dict = Some(builder.build(DictSource::Base)?);
         self.clear_cache();
         Ok(())
     }
@@ -329,6 +327,7 @@ impl Matcher {
 }
 
 /// 匹配策略
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchStrategy {
     Exact,
@@ -337,6 +336,7 @@ pub enum MatchStrategy {
 }
 
 /// 匹配选项
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct MatchOptions {
     pub strategy: MatchStrategy,

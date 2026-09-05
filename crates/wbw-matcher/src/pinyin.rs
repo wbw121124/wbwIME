@@ -158,10 +158,13 @@ impl PinyinString {
             for seg_len in (1..=max_len).rev() {
                 let segment: String = chars[pos..pos + seg_len].iter().collect();
                 if let Some(syllable) = PinyinSyllable::parse(&segment) {
-                    syllables.push(syllable);
-                    pos += seg_len;
-                    matched = true;
-                    break;
+                    // 检查是否在有效音节表中
+                    if PinyinValidator::is_valid_syllable(&syllable.to_string()) {
+                        syllables.push(syllable);
+                        pos += seg_len;
+                        matched = true;
+                        break;
+                    }
                 }
             }
             if !matched {

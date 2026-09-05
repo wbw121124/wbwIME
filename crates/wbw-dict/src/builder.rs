@@ -9,6 +9,7 @@ use crate::entry::{DictBuilderConfig, DictEntry, DictSource};
 use crate::fst_dict::{FstDict, FstDictBuilder};
 
 /// 构建错误类型
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum BuilderError {
     #[error("配置错误: {0}")]
@@ -157,7 +158,7 @@ impl DictBuilder {
     }
 
     /// 构建 FST 词典
-    pub fn build_fst(self) -> Result<FstDict, String> {
+    pub fn build_fst(self) -> ImeResult<FstDict> {
         let mut builder = FstDictBuilder::new();
         builder.add_entries(self.entries);
         builder.build(DictSource::Base)

@@ -5,3 +5,8 @@
 wbw_l0.json
 *.log
 .DS_Store
+dist/
+*.pdb
+.env
+.env.local
+.idea/

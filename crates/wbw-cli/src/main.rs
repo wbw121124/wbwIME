@@ -237,7 +237,7 @@ fn build_fst(path: &Path) -> CliResult<(FstDict, Vec<CinFuzzyRule>)> {
         .map_err(|e| CliError::DictError(e.to_string()))?;
     builder.deduplicate();
     builder.sort();
-    Ok((builder.build_fst().map_err(CliError::DictError)?, result.fuzzy_rules))
+    Ok((builder.build_fst()?, result.fuzzy_rules))
 }
 
 /// 从 FST 词典构建匹配器

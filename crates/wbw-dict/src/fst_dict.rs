@@ -18,6 +18,7 @@ use fst::{IntoStreamer, Streamer};
 pub const KEY_SEP: char = '\u{0001}';
 
 /// FST 词典错误
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum FstDictError {
     #[error("词典加载失败: {0}")]
@@ -84,7 +85,7 @@ impl FstDict {
     }
 
     /// 从词条列表构建词典
-    pub fn from_entries(entries: Vec<DictEntry>, source: DictSource) -> Result<Self, String> {
+    pub fn from_entries(entries: Vec<DictEntry>, source: DictSource) -> ImeResult<Self> {
         let mut builder = fst::MapBuilder::memory();
 
         // 按 code 排序以确保 FST 有序性
@@ -98,16 +99,19 @@ impl FstDict {
             let key = format!("{}{}{}", entry.code, KEY_SEP, entry.word);
             builder
                 .insert(key.as_bytes(), entry.freq as u64)
-                .map_err(|e| format!("FST insert failed: {}", e))?;
+                .map_err(|e| {
+                    wbw_types::ImeError::BuildError(format!("FST 插入失败: {}", e))
+                })?;
             entry_count += 1;
             code_set.insert(entry.code.clone());
         }
 
-        let bytes = builder
-            .into_inner()
-            .map_err(|e| format!("FST finalize failed: {}", e))?;
-        let map = fst::Map::new(bytes)
-            .map_err(|e| format!("FST map failed: {}", e))?;
+        let bytes = builder.into_inner().map_err(|e| {
+            wbw_types::ImeError::BuildError(format!("FST 构建失败: {}", e))
+        })?;
+        let map = fst::Map::new(bytes).map_err(|e| {
+            wbw_types::ImeError::ParseError(format!("FST map 构造失败: {}", e))
+        })?;
 
         Ok(Self {
             map,
@@ -189,8 +193,13 @@ impl FstDict {
 
     /// 模糊查询：查找编辑距离在 max_edit_distance 以内的编码
     ///
-    /// 采用流式全表扫描 + code 部分精确编辑距离过滤的策略。
-    /// 当 max_edit_distance=1 时，通过长度剪枝（|len(a)-len(b)|<=1）快速排除明显不匹配的条目。
+    /// 注意：FST Levenshtein automaton 无法直接用于此场景，因为 key 格式为
+    /// `code + \x01 + word`，automaton 匹配完整 key 时 word 部分的字节会
+    /// 膨胀编辑距离，导致合法匹配被拒绝。因此采用流式全表扫描 + code 部分
+    /// 精确编辑距离过滤的策略。
+    ///
+    /// **性能特征**：此方法需要全表扫描（O(n)），其中 n 为词典词条总数。
+    /// 对于大型词典（>10万条目），建议缓存结果或限制调用频率。
     pub fn fuzzy_lookup(&self, code: &str, max_edit_distance: usize) -> Vec<(DictEntry, usize)> {
         const MAX_FUZZY_RESULTS: usize = 100;
         let query_len = code.chars().count();
@@ -281,7 +290,7 @@ impl FstDict {
     }
 
     /// 合并另一个词典（去重）
-    pub fn merge(&mut self, other: &FstDict) {
+    pub fn merge(&mut self, other: &FstDict) -> ImeResult<()> {
         let mut all_entries = self.iter_entries();
         let other_entries = other.iter_entries();
 
@@ -294,9 +303,8 @@ impl FstDict {
             }
         }
 
-        if let Ok(merged) = Self::from_entries(all_entries, self.source) {
-            *self = merged;
-        }
+        *self = Self::from_entries(all_entries, self.source)?;
+        Ok(())
     }
 
     /// 内部：遍历所有词条（返回 owned 值）
@@ -370,7 +378,7 @@ impl FstDictBuilder {
         self.entries.extend(entries);
     }
 
-    pub fn build(self, source: DictSource) -> Result<FstDict, String> {
+    pub fn build(self, source: DictSource) -> ImeResult<FstDict> {
         FstDict::from_entries(self.entries, source)
     }
 
@@ -422,7 +430,7 @@ pub fn edit_distance(s1: &str, s2: &str) -> usize {
 }
 
 /// 合并两个词典
-pub fn merge_dicts(dict1: &FstDict, dict2: &FstDict) -> Result<FstDict, String> {
+pub fn merge_dicts(dict1: &FstDict, dict2: &FstDict) -> ImeResult<FstDict> {
     let mut entries: Vec<DictEntry> = dict1.collect_entries();
     entries.extend(dict2.collect_entries());
     FstDict::from_entries(entries, dict1.source)
@@ -508,7 +516,7 @@ mod tests {
         let mut dict1 = FstDict::from_entries(entries1, DictSource::Base).unwrap();
         let dict2 = FstDict::from_entries(entries2, DictSource::User).unwrap();
 
-        dict1.merge(&dict2);
+        dict1.merge(&dict2).unwrap();
         assert_eq!(dict1.entry_count(), 2);
     }
 

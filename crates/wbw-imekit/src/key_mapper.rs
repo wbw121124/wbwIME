@@ -5,6 +5,7 @@ use thiserror::Error;
 use wbw_types::{ImeError, ImeResult};
 
 /// 按键映射错误类型
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum KeyMapperError {
     #[error("按键映射无效: {0}")]
@@ -233,7 +234,13 @@ impl KeyMapper {
     /// 移除映射
     pub fn remove_mapping(&mut self, from: &KeyEvent) -> bool {
         let len_before = self.mappings.len();
-        self.mappings.retain(|m| m.from.code != from.code);
+        self.mappings.retain(|m| {
+            m.from.code != from.code
+                || m.from.shift != from.shift
+                || m.from.ctrl != from.ctrl
+                || m.from.alt != from.alt
+                || m.from.meta != from.meta
+        });
         self.mappings.len() < len_before
     }
 
@@ -243,7 +250,14 @@ impl KeyMapper {
         if let Some(mapping) = self
             .mappings
             .iter()
-            .find(|m| m.from.code == key.code && m.enabled)
+            .find(|m| {
+                m.from.code == key.code
+                    && m.from.shift == key.shift
+                    && m.from.ctrl == key.ctrl
+                    && m.from.alt == key.alt
+                    && m.from.meta == key.meta
+                    && m.enabled
+            })
         {
             return Some(mapping);
         }
@@ -251,7 +265,14 @@ impl KeyMapper {
         // 再查找默认映射
         self.default_mappings
             .iter()
-            .find(|m| m.from.code == key.code && m.enabled)
+            .find(|m| {
+                m.from.code == key.code
+                    && m.from.shift == key.shift
+                    && m.from.ctrl == key.ctrl
+                    && m.from.alt == key.alt
+                    && m.from.meta == key.meta
+                    && m.enabled
+            })
     }
 
     /// 处理按键
@@ -454,18 +475,19 @@ impl KeyStatsCollector {
 
     /// 记录按键
     pub fn record_key(&mut self, key: &KeyEvent) {
-        self.stats.total_keys += 1;
-        *self.stats.key_counts.entry(key.code).or_insert(0) += 1;
-
-        // 计算间隔
+        // 计算间隔（先计算，后增加计数，避免除零）
         if let Some(last_time) = self.last_key_time {
             let interval = key.timestamp - last_time;
-            let total_intervals = self.stats.total_keys as f64 - 1.0;
-            self.stats.avg_interval_ms = (self.stats.avg_interval_ms * (total_intervals - 1.0)
-                + interval as f64)
-                / total_intervals;
+            let total_intervals = self.stats.total_keys as f64;
+            if total_intervals > 0.0 {
+                self.stats.avg_interval_ms = (self.stats.avg_interval_ms * (total_intervals - 1.0)
+                    + interval as f64)
+                    / total_intervals;
+            }
         }
 
+        self.stats.total_keys += 1;
+        *self.stats.key_counts.entry(key.code).or_insert(0) += 1;
         self.last_key_time = Some(key.timestamp);
 
         // 更新最频繁按键

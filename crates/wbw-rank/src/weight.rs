@@ -4,6 +4,7 @@ use thiserror::Error;
 use wbw_types::{Candidate, CandidateSource, ImeResult, RankConfig};
 
 /// 权重错误类型
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum WeightError {
     #[error("权重计算失败: {0}")]
@@ -380,6 +381,7 @@ impl Default for WeightRanges {
 }
 
 /// 权重评估结果
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct WeightEvaluationResult {
     /// 配置

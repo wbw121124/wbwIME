@@ -12,9 +12,9 @@ pub struct NgramTable {
     /// N-gram 阶数
     order: usize,
     /// N-gram 计数：(context, word) → count
-    counts: HashMap<(Vec<String>, String), u64>,
+    counts: HashMap<(SmallVec<[String; 2]>, String), u64>,
     /// 上下文计数：context → count
-    context_counts: HashMap<Vec<String>, u64>,
+    context_counts: HashMap<SmallVec<[String; 2]>, u64>,
     /// 词条数量
     entry_count: usize,
     /// 词汇表大小
@@ -34,8 +34,8 @@ impl NgramTable {
     }
 
     /// 从计数数据构建
-    pub fn from_counts(order: usize, counts: HashMap<(Vec<String>, String), u64>) -> Self {
-        let mut context_counts: HashMap<Vec<String>, u64> = HashMap::new();
+    pub fn from_counts(order: usize, counts: HashMap<(SmallVec<[String; 2]>, String), u64>) -> Self {
+        let mut context_counts: HashMap<SmallVec<[String; 2]>, u64> = HashMap::new();
         let mut vocab: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut entry_count: u64 = 0;
 
@@ -62,10 +62,10 @@ impl NgramTable {
     /// 上下文通常很小（1~2 项），因此使用 `SmallVec` 内联构建以避免堆分配。
     pub fn lookup(&self, context: &[&str], word: &str) -> f64 {
         let ctx: SmallVec<[String; 2]> = context.iter().map(|s| s.to_string()).collect();
-        let key = (ctx.to_vec(), word.to_string());
+        let key = (ctx.clone(), word.to_string());
 
         let ngram_count = self.counts.get(&key).copied().unwrap_or(0);
-        let ctx_count = self.context_counts.get(ctx.as_slice()).copied().unwrap_or(0);
+        let ctx_count = self.context_counts.get(&ctx).copied().unwrap_or(0);
 
         if ctx_count == 0 {
             0.0
@@ -77,12 +77,12 @@ impl NgramTable {
     /// 查询条件概率（带 Laplace 平滑）
     pub fn conditional_probability(&self, context: &[&str], word: &str) -> f64 {
         let ctx: SmallVec<[String; 2]> = context.iter().map(|s| s.to_string()).collect();
-        let key = (ctx.to_vec(), word.to_string());
+        let key = (ctx.clone(), word.to_string());
 
         let ngram_count = self.counts.get(&key).copied().unwrap_or(0);
         let ctx_count = self
             .context_counts
-            .get(ctx.as_slice())
+            .get(&ctx)
             .copied()
             .unwrap_or(0);
 
@@ -95,7 +95,7 @@ impl NgramTable {
     pub fn count(&self, context: &[&str], word: &str) -> u64 {
         let ctx: SmallVec<[String; 2]> = context.iter().map(|s| s.to_string()).collect();
         self.counts
-            .get(&(ctx.to_vec(), word.to_string()))
+            .get(&(ctx, word.to_string()))
             .copied()
             .unwrap_or(0)
     }
@@ -150,7 +150,7 @@ pub struct TableStats {
 /// N-gram 表构建器
 pub struct NgramTableBuilder {
     order: usize,
-    counts: HashMap<(Vec<String>, String), u64>,
+    counts: HashMap<(SmallVec<[String; 2]>, String), u64>,
     min_count: u64,
 }
 
@@ -169,7 +169,7 @@ impl NgramTableBuilder {
     }
 
     /// 添加 N-gram 计数
-    pub fn add_count(&mut self, context: Vec<String>, word: String, count: u64) {
+    pub fn add_count(&mut self, context: SmallVec<[String; 2]>, word: String, count: u64) {
         *self.counts.entry((context, word)).or_insert(0) += count;
     }
 
@@ -182,7 +182,7 @@ impl NgramTableBuilder {
                 continue;
             }
             for i in 0..=sentence.len() - self.order {
-                let context = sentence[i..i + self.order - 1].to_vec();
+                let context: SmallVec<[String; 2]> = sentence[i..i + self.order - 1].iter().cloned().collect();
                 let word = sentence[i + self.order - 1].clone();
                 *self.counts.entry((context, word)).or_insert(0) += 1;
             }
@@ -191,7 +191,7 @@ impl NgramTableBuilder {
 
     /// 构建表（过滤低频 N-gram）
     pub fn build(self) -> NgramTable {
-        let counts: HashMap<(Vec<String>, String), u64> = self
+        let counts: HashMap<(SmallVec<[String; 2]>, String), u64> = self
             .counts
             .into_iter()
             .filter(|(_, count)| *count >= self.min_count)
@@ -212,10 +212,10 @@ mod tests {
     fn build_test_table() -> NgramTable {
         let mut builder = NgramTableBuilder::new(2);
         // "我 爱 中国" 的 bigram
-        builder.add_count(vec!["我".into()], "爱".into(), 10);
-        builder.add_count(vec!["爱".into()], "中国".into(), 8);
-        builder.add_count(vec!["我".into()], "是".into(), 5);
-        builder.add_count(vec!["是".into()], "好人".into(), 3);
+        builder.add_count(SmallVec::from_iter(["我".into()]), "爱".into(), 10);
+        builder.add_count(SmallVec::from_iter(["爱".into()]), "中国".into(), 8);
+        builder.add_count(SmallVec::from_iter(["我".into()]), "是".into(), 5);
+        builder.add_count(SmallVec::from_iter(["是".into()]), "好人".into(), 3);
         builder.build()
     }
 
@@ -266,8 +266,8 @@ mod tests {
     #[test]
     fn test_min_count_filter() {
         let mut builder = NgramTableBuilder::new(2).with_min_count(5);
-        builder.add_count(vec!["a".into()], "b".into(), 10);
-        builder.add_count(vec!["c".into()], "d".into(), 2); // 低于阈值
+        builder.add_count(SmallVec::from_iter(["a".into()]), "b".into(), 10);
+        builder.add_count(SmallVec::from_iter(["c".into()]), "d".into(), 2); // 低于阈值
         let table = builder.build();
         assert_eq!(table.count(&["a"], "b"), 10);
         assert_eq!(table.count(&["c"], "d"), 0); // 被过滤

@@ -30,6 +30,9 @@ pub enum ImeError {
     #[error("N-gram 模型错误: {0}")]
     NgramError(String),
 
+    #[error("构建失败: {0}")]
+    BuildError(String),
+
     #[error("未知错误")]
     Unknown,
 }

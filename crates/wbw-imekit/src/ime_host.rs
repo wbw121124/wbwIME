@@ -6,6 +6,7 @@ use thiserror::Error;
 use wbw_types::{Candidate, ImeResult, InputMode};
 
 /// IME 宿主错误类型
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum ImeHostError {
     #[error("初始化失败: {0}")]

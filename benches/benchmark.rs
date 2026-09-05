@@ -1,3 +1,5 @@
+#![allow(unused_imports, dead_code, unreachable_code)]
+
 //! wbwIME 性能基准测试
 
 use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};

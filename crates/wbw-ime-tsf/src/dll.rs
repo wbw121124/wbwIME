@@ -153,11 +153,9 @@ pub unsafe extern "system" fn DllMain(
             DLL_HINST.store(hinst, std::sync::atomic::Ordering::SeqCst);
         }
         DLL_PROCESS_DETACH => {
-            // 使用 try_lock 避免在加载器锁下死锁
-            if let Ok(mut guard) = text_service::IME_STATE.try_lock() {
-                *guard = None;
-            }
-            // try_lock 失败时跳过清理，进程即将退出
+            // 不在 DllMain 中获取 Mutex，避免加载器锁下死锁。
+            // IME_STATE 的清理由 OS 进程退出时自动完成。
+            // 如果需要主动清理，可在 DllCanUnloadNow 返回 S_OK 后由外部触发。
         }
         _ => {}
     }

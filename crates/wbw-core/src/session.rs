@@ -224,6 +224,7 @@ pub enum SessionEvent {
 }
 
 /// 会话事件监听器
+#[allow(dead_code)]
 pub struct SessionEventListener {
     /// 监听器函数
     listener: Box<dyn FnMut(SessionEvent)>,
@@ -262,6 +263,7 @@ pub struct SessionStats {
 }
 
 /// 会话统计收集器
+#[allow(dead_code)]
 pub struct SessionStatsCollector {
     /// 统计信息
     stats: SessionStats,

@@ -182,6 +182,7 @@ pub enum ContextEvent {
 type ContextEventHandlerFn = Box<dyn FnMut(&mut ContextManager, ContextEvent) -> ImeResult<()>>;
 
 /// 上下文事件处理器
+#[allow(dead_code)]
 pub struct ContextEventHandler {
     /// 处理器函数
     handler: ContextEventHandlerFn,

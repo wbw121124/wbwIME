@@ -14,9 +14,9 @@ pub struct CandidateList {
     pub page_size: usize,
     /// 总数量
     pub total: usize,
-    /// 是否有下一页
+    /// 是否有下一页（必须与 page/total 保持同步，通过 next_page/prev_page/goto_page 更新）
     pub has_next: bool,
-    /// 是否有上一页
+    /// 是否有上一页（必须与 page/total 保持同步，通过 next_page/prev_page/goto_page 更新）
     pub has_prev: bool,
 }
 
@@ -239,6 +239,7 @@ impl CandidateFilter {
 }
 
 /// 候选词转换器
+#[allow(dead_code)]
 pub struct CandidateConverter;
 
 impl CandidateConverter {

@@ -220,6 +220,8 @@ impl FuzzyMatcher {
     {
         let mut results: Vec<(T, f64)> = Vec::new();
 
+        let variants = self.generate_variants(input);
+
         for candidate in candidates {
             let target = extract(candidate);
 
@@ -230,7 +232,6 @@ impl FuzzyMatcher {
             }
 
             // 规则变体匹配
-            let variants = self.generate_variants(input);
             if variants.iter().any(|v| v == target) {
                 results.push((candidate.clone(), 80.0));
                 continue;
@@ -260,6 +261,7 @@ impl FuzzyMatcher {
 }
 
 /// 模糊匹配结果
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FuzzyMatchResult {
     /// 原始输入

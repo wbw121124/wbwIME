@@ -97,7 +97,7 @@ impl FbtermIme {
             builder.load_cin(path).expect("无法加载 .cin 词典");
             builder.deduplicate();
             builder.sort();
-            builder.build_fst().expect("FST 构建失败")
+            builder.build_fst().expect("无法构建 FST 词典")
         };
 
         let matcher_config = MatcherConfig {
@@ -266,6 +266,13 @@ fn recv_message(stream: &mut UnixStream) -> std::io::Result<(MsgType, Vec<u8>)> 
             ))
         }
     };
+    const MAX_PAYLOAD: usize = 1024 * 1024; // 1MB
+    if length as usize > MAX_PAYLOAD {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("payload 过大: {} bytes (最大 {} bytes)", length, MAX_PAYLOAD),
+        ));
+    }
     let mut payload = vec![0u8; length as usize];
     if !payload.is_empty() {
         stream.read_exact(&mut payload)?;
@@ -327,7 +334,12 @@ fn run_ime(stream: &mut UnixStream, ime: &mut FbtermIme) -> std::io::Result<()> 
                 if payload.len() < std::mem::size_of::<FbTermInfoData>() {
                     continue;
                 }
-                let info: FbTermInfoData = unsafe { std::ptr::read(payload.as_ptr() as *const FbTermInfoData) };
+                // 使用 from_ne_bytes 逐字段解析，避免 packed struct 的未对齐访问 UB
+                let info = FbTermInfoData {
+                    term_width: u32::from_ne_bytes([payload[0], payload[1], payload[2], payload[3]]),
+                    term_height: u32::from_ne_bytes([payload[4], payload[5], payload[6], payload[7]]),
+                    rotation: u32::from_ne_bytes([payload[8], payload[9], payload[10], payload[11]]),
+                };
                 let w = info.term_width;
                 let h = info.term_height;
                 let r = info.rotation;

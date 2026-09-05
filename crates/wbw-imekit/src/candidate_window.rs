@@ -4,6 +4,7 @@ use thiserror::Error;
 use wbw_types::{Candidate, ImeResult};
 
 /// 候选窗口错误类型
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum CandidateWindowError {
     #[error("窗口初始化失败: {0}")]

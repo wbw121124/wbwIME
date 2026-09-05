@@ -26,7 +26,7 @@ pub struct L0Learner {
     /// 配置
     config: L0Config,
     /// 学习数据
-    data: Vec<LearningEntry>,
+    data: std::collections::VecDeque<LearningEntry>,
     /// 计数器
     counters: std::collections::HashMap<String, u32>,
 }
@@ -47,7 +47,7 @@ impl L0Learner {
     pub fn new(config: L0Config) -> Self {
         Self {
             config,
-            data: Vec::new(),
+            data: std::collections::VecDeque::new(),
             counters: std::collections::HashMap::new(),
         }
     }
@@ -61,7 +61,7 @@ impl L0Learner {
             .map_err(|e| wbw_types::ImeError::ConfigError(format!("快照解析失败: {}", e)))?;
         Ok(Self {
             config,
-            data: snapshot.data,
+            data: snapshot.data.into(),
             counters: snapshot.counters,
         })
     }
@@ -81,9 +81,9 @@ impl L0Learner {
         };
 
         if self.data.len() >= MAX_DATA_ENTRIES {
-            self.data.remove(0);
+            self.data.pop_front();
         }
-        self.data.push(entry);
+        self.data.push_back(entry);
     }
 
     /// 检查是否达到学习阈值
@@ -158,7 +158,7 @@ impl L0Learner {
     /// 保存快照
     pub fn save_snapshot(&self) -> ImeResult<()> {
         let snapshot = L0Snapshot {
-            data: self.data.clone(),
+            data: self.data.iter().cloned().collect(),
             counters: self.counters.clone(),
         };
         let json = serde_json::to_string_pretty(&snapshot)
@@ -181,7 +181,7 @@ impl L0Learner {
         })?;
         let snapshot: L0Snapshot = serde_json::from_str(&contents)
             .map_err(|e| wbw_types::ImeError::ConfigError(format!("快照解析失败: {}", e)))?;
-        self.data = snapshot.data;
+        self.data = snapshot.data.into();
         self.counters = snapshot.counters;
         Ok(())
     }
@@ -317,6 +317,7 @@ impl Default for L0StatsCollector {
 }
 
 /// L0 学习策略
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum L0Strategy {
     /// 基于阈值的学习
@@ -330,6 +331,7 @@ pub enum L0Strategy {
 }
 
 /// L0 学习配置
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct L0LearnConfig {
     /// 学习策略

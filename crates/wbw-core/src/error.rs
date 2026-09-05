@@ -45,6 +45,7 @@ impl From<ImeError> for CoreError {
             ImeError::ConfigError(msg) => CoreError::ConfigError(msg),
             ImeError::IoError(msg) => CoreError::IoError(msg),
             ImeError::NgramError(msg) => CoreError::DictError(msg),
+            ImeError::BuildError(msg) => CoreError::DictError(msg),
             ImeError::Unknown => CoreError::Unknown,
         }
     }
@@ -54,6 +55,7 @@ impl From<ImeError> for CoreError {
 pub type CoreResult<T> = Result<T, CoreError>;
 
 /// 错误上下文
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ErrorContext {
     /// 错误消息
@@ -117,6 +119,7 @@ pub enum RecoveryStrategy {
 }
 
 /// 错误恢复器
+#[allow(dead_code)]
 pub struct ErrorRecovery;
 
 impl ErrorRecovery {

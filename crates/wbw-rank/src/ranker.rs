@@ -81,7 +81,7 @@ impl Ranker {
             ranked.sort_by(|a, b| {
                 let a_relevance = self.context_relevance(&a.text, context);
                 let b_relevance = self.context_relevance(&b.text, context);
-                b_relevance.total_cmp(&a_relevance)
+                b_relevance.total_cmp(&a_relevance).then_with(|| b.score.total_cmp(&a.score))
             });
         }
 
@@ -90,9 +90,9 @@ impl Ranker {
 
     /// 计算候选词与上下文的相关性
     fn context_relevance(&self, word: &str, context: &str) -> f64 {
-        // 简单实现：如果候选词出现在上下文中，相关性为 1.0
+        // 基于包含比例的梯度评分
         if context.contains(word) {
-            1.0
+            (word.len() as f64 / context.len() as f64).min(1.0)
         } else {
             0.0
         }

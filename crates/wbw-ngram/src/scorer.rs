@@ -164,12 +164,13 @@ impl Default for ScorerBuilder {
 mod tests {
     use super::*;
     use crate::table::NgramTableBuilder;
+    use smallvec::SmallVec;
 
     fn build_test_scorer() -> NgramScorer {
         let mut builder = NgramTableBuilder::new(2);
-        builder.add_count(vec!["我".into()], "爱".into(), 10);
-        builder.add_count(vec!["爱".into()], "中国".into(), 8);
-        builder.add_count(vec!["我".into()], "是".into(), 5);
+        builder.add_count(SmallVec::from_iter(["我".into()]), "爱".into(), 10);
+        builder.add_count(SmallVec::from_iter(["爱".into()]), "中国".into(), 8);
+        builder.add_count(SmallVec::from_iter(["我".into()]), "是".into(), 5);
         let table = builder.build();
 
         NgramScorer::new(ScorerConfig::default()).with_table(table)

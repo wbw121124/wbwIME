@@ -29,7 +29,9 @@ impl Segment {
         }
     }
 
-    /// 获取分词长度（字符数）
+    /// 返回文本的字节长度
+    ///
+    /// 注意：对于包含多字节 UTF-8 字符的文本，此值不等于字符数。
     pub fn len(&self) -> usize {
         self.text.len()
     }
@@ -155,9 +157,9 @@ impl Segmenter {
         segments
     }
 
-    /// 双向分词（正向+反向取交集）
+    /// 双向分词验证：正向+反向一致时返回正向结果，不一致时也返回正向结果（保守策略）
     ///
-    /// 用于提高分词准确率，减少歧义。
+    /// 用于验证分词结果的一致性，当前实现为保守策略，始终返回正向结果。
     pub fn bidirectional_segment(&self, input: &str) -> Vec<Segment> {
         let forward = self.segment(input);
         let backward = self.reverse_segment(input);
