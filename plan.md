@@ -394,7 +394,7 @@ wbw-types:    0 passed (纯类型)
 - CandidateEntity 文档无实际约束
 
 ### 修复状态
-- [ ] 编写修复方案
-- [ ] 执行修复
-- [ ] cargo test 验证
-- [ ] git commit + push
+- [x] 编写修复方案
+- [x] 执行修复
+- [x] cargo test 验证（159 tests passed）
+- [x] git commit + push（`61e41df`）
