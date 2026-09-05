@@ -832,3 +832,29 @@ wbw-types:    0 passed (纯类型)
 #### Medium 优先级
 - R5-02: CStr::from_ptr 添加长度限制
 - D5-01: 更新 plan.md 测试结果
+
+---
+
+## Round 6 最终确认（2026-09-04）
+
+### 修复验证
+
+| 修复项 | 状态 |
+|--------|------|
+| COM catch_unwind | ✅ |
+| IPC 认证 | ✅ |
+| usize 转换 | ✅ |
+| 颜色解析 | ✅ |
+| 配置日志 | ✅ |
+| fbterm 字母键 | ✅ |
+| buffer 长度检查 | ✅ |
+| config smooth 类型修正 | ✅ |
+| config dict_path 默认值统一 | ✅ |
+| native cursor 计算 | ✅ |
+| CStr 长度限制 | ✅ |
+
+### 审查结论
+
+**无 Critical/High 问题，代码可以发布。**
+
+所有 COM 接口均有 panic 防护；IPC 帧协议有 1MB 上限；整数转换有边界守卫；缓冲区长度在各路径均有限制；颜色解析有容错；SmoothMethod 类型系统正确；字典路径默认值统一。
