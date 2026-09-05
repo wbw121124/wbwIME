@@ -426,3 +426,39 @@ wbw-types:    0 passed (纯类型)
 - [x] 修复完成
 - [x] 159 tests 全部通过
 - [x] git commit + push（`79bc2a1`）
+
+---
+
+## 第五轮审查（Round 5 Review）
+
+### 发现汇总
+- P0：0 项
+- P1（逻辑错误）：3 项
+- P2（数据正确性）：1 项
+
+### 修复内容
+| # | 问题 | 文件 | 修复 |
+|---|------|------|------|
+| P1-1 | `perplexity()` 在 `use_log_prob=false` 时公式错误 | scorer.rs | 直接计算 log-prob 不依赖 score_sequence 输出 |
+| P1-2 | `wbw_ime_input_text` cursor 硬编码为 0 | wbw-ime-native/lib.rs | 改为 `buffer.len()` |
+| P1-3 | `convert_response` 未填充 `WbwCandidate.code` | wbw-ime-native/lib.rs | 用 CString 填充 code 字段 |
+| P2-1 | `data_snapshot` 用 `word.len()` 做 word_id 导致碰撞 | l0_learn.rs | 改用 `fxhash::hash(word)` |
+
+### 状态
+- [x] 修复完成
+- [x] 159 tests 全部通过
+- [x] git commit + push（`b51165c`）
+
+---
+
+## 子代理审查规范（后续轮次）
+
+**重要：子代理在审查/修复时必须查阅依赖库官方文档。**
+
+具体要求：
+- 涉及 `windows` crate → 查阅 https://microsoft.github.io/windows-rs/
+- 涉及 `criterion` → 查阅 https://bheisler.github.io/criterion.rs/book/
+- 涉及 `serde`/`bincode`/`fxhash` 等 → 查阅 crates.io 文档页
+- 涉及 FFI（`libc`, `std::ffi`）→ 查阅 Rust std docs
+- 涉及 TSF COM 接口 → 查阅微软 ITfTextInputProcessor 等官方文档
+- 不确定的 API 行为 → 先 `cargo doc` 或 webfetch 官方文档再下结论
