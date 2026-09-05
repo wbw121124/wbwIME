@@ -47,11 +47,13 @@ impl ContextManager {
 
     /// 添加字符到缓冲区
     pub fn push_char(&mut self, ch: char) {
-        if self.current.buffer.len() >= MAX_BUFFER_LEN {
-            return; // buffer 已满，拒绝继续输入
-        }
         self.save_history();
         self.current.buffer.insert(self.current.cursor, ch);
+        if self.current.buffer.len() > MAX_BUFFER_LEN {
+            let ch_len = ch.len_utf8();
+            self.current.buffer.drain(self.current.cursor..self.current.cursor + ch_len);
+            return;
+        }
         self.current.cursor += ch.len_utf8();
     }
 

@@ -3,6 +3,8 @@
 base_path = "resources/dicts/pinyin.cin"
 # N-gram 语言模型文件路径，用于词频评分与上下文预测
 ngram_path = "resources/dicts/ngram.bin"
+# 用户词典路径，存储用户自造词
+user_dict_path = "resources/dicts/user.txt"
 
 [matcher]
 # 是否启用模糊匹配（bool）
@@ -30,6 +32,8 @@ snapshot_path = "wbw_l0.json"
 
 [ngram]
 # N-gram 模型阶数（2=bigram, 3=trigram）
-order = 2
-# 拉普拉斯平滑参数（f64）
-smooth = 0.1
+order = 3
+# 平滑算法
+smooth = "kneser_ney"
+# N-gram 模型文件
+model_path = "resources/dicts/ngram.bin"
