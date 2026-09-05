@@ -118,11 +118,6 @@ impl Ranker {
         &self.config_manager
     }
 
-    /// 获取可变配置管理器
-    pub fn config_manager_mut(&mut self) -> &mut RankConfigManager {
-        &mut self.config_manager
-    }
-
     /// 获取 L0 学习器
     pub fn l0_learner(&self) -> &L0Learner {
         &self.l0_learner

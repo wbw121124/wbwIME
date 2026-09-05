@@ -469,7 +469,10 @@ pub unsafe fn tsf_insert_text(thread_mgr: *mut c_void, _client_id: u32, text: &s
     {
         let ctx = crate::text_service::TSF_CTX.lock().unwrap();
         if ctx.thread_mgr.is_null() || ctx.thread_mgr != thread_mgr {
-            return; // thread_mgr 已失效
+            // thread_mgr 已失效，回退剪贴板粘贴
+            drop(ctx);
+            clipboard_paste(text);
+            return;
         }
     }
 
