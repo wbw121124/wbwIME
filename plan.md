@@ -650,6 +650,52 @@ wbw-types:    0 passed (纯类型)
 
 ---
 
+## Round 1 代码+文档审查（2026-09-04）
+
+### 代码问题
+
+| # | 严重性 | 问题 | 位置 |
+|---|--------|------|------|
+| C1 | High | COM 方法缺少 catch_unwind（cf_add_ref/cf_release/cf_qi/es_add_ref/es_release） | dll.rs, output.rs |
+| C2 | Medium | 静态 COM 对象引用计数无限增长 | text_service.rs:200 |
+| C3 | Medium | IPC 无认证机制 | lib.rs:16, ipc.rs:23 |
+| C4 | Medium | 钩子线程 Mutex 性能风险（阻塞系统键盘） | hook.rs:113,129,138 |
+| C5 | Medium | usize → i32 转换溢出 | main.rs:101,322 |
+| C6 | Low | 颜色解析无严格验证 | main.rs:159 |
+| C7 | Low | 候选列表去重逻辑不一致 | matcher.rs:201,307 |
+| C8 | Low | 配置文件读取静默失败 | config.rs:280 |
+
+### 文档问题
+
+| # | 严重性 | 问题 | 位置 |
+|---|--------|------|------|
+| D1 | High | README 项目结构缺少 6 个 crate | README.md |
+| D2 | High | README 配置示例 base.cin → 实际 pinyin.cin | README.md |
+| D3 | Medium | plan.md 统计数据重复矛盾 | plan.md |
+| D4 | Medium | config.toml 无注释说明 | config.toml |
+| D5 | Low | README 缺少安装部署说明 | README.md |
+
+### 修复计划
+
+#### High 优先级
+- C1: 为所有 COM 方法添加 catch_unwind
+- D1: 更新 README 项目结构（添加 6 个 crate）
+- D2: 修正 README 配置示例文件名
+
+#### Medium 优先级
+- C3: IPC 添加 PID 验证
+- C5: usize → i32 使用 try_into
+- D3: 清理 plan.md 重复内容
+- D4: config.toml 添加注释
+
+#### Low 优先级
+- C6: 颜色解析添加验证
+- C7: 统一去重逻辑
+- C8: 配置读取添加日志
+- D5: README 添加部署说明
+
+---
+
 ## 子代理审查规范（后续轮次）
 
 **重要：子代理在审查/修复时必须查阅依赖库官方文档。**
