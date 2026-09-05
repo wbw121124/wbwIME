@@ -105,7 +105,6 @@ pub struct SessionState {
     /// 会话配置
     pub config: SessionConfig,
     /// 会话创建时间（UNIX 纪元秒数，内存态，不参与序列化）
-    /// 会话创建时间（UNIX 纪元秒数，内存态，不参与序列化）
     pub created_at: u64,
     /// 最后活动时间（UNIX 纪元秒数，内存态，不参与序列化）
     pub last_active: u64,

@@ -393,6 +393,7 @@ pub unsafe fn insert_text_at_caret(thread_mgr: *mut c_void, text: &str) -> bool 
 static CLIPBOARD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 pub fn clipboard_paste(text: &str) {
+    // 使用锁保护剪贴板操作，SendInput 在锁外执行避免阻塞键盘热路径
     let _guard = CLIPBOARD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     unsafe {
         let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
@@ -402,9 +403,6 @@ pub fn clipboard_paste(text: &str) {
             CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
         };
         use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock};
-        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-            SendInput, INPUT, INPUT_0, KEYBDINPUT, KEYEVENTF_KEYUP,
-        };
 
         if OpenClipboard(std::ptr::null_mut()) == 0 {
             return;
@@ -424,9 +422,14 @@ pub fn clipboard_paste(text: &str) {
         GlobalUnlock(h_mem);
         SetClipboardData(1, h_mem);
         CloseClipboard();
+    }
+    // 锁在此处释放，之后做 sleep + SendInput
+    std::thread::sleep(std::time::Duration::from_millis(50));
 
-        std::thread::sleep(std::time::Duration::from_millis(50));
-
+    unsafe {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+            SendInput, INPUT, INPUT_0, KEYBDINPUT, KEYEVENTF_KEYUP,
+        };
         let make_key = |vk: u16, scan: u16, flags: u32| INPUT {
             r#type: 1,
             Anonymous: INPUT_0 {
