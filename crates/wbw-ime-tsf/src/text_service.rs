@@ -8,6 +8,7 @@ use crate::output;
 use crate::output::{HRESULT, S_OK, ULONG};
 
 const E_FAIL: HRESULT = -2147467259;
+const E_INVALIDARG: HRESULT = -2147024809;
 
 pub static IME_STATE: std::sync::Mutex<Option<crate::state::ImeState>> =
     std::sync::Mutex::new(None);
@@ -607,6 +608,9 @@ unsafe extern "system" fn ks_test_key_down(
     _l_param: u32,
     pf_eaten: *mut i32,
 ) -> HRESULT {
+    if pf_eaten.is_null() {
+        return E_INVALIDARG;
+    }
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     unsafe {
         *pf_eaten = 0;
@@ -707,6 +711,9 @@ unsafe extern "system" fn ks_key_down(
     _l_param: u32,
     pf_eaten: *mut i32,
 ) -> HRESULT {
+    if pf_eaten.is_null() {
+        return E_INVALIDARG;
+    }
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     ensure_state_loaded();
     unsafe {

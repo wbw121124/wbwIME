@@ -67,11 +67,9 @@ pub unsafe extern "C" fn wbw_ime_create(dict_path: *const c_char) -> *mut WbwIme
         return ptr::null_mut();
     }
 
-    const MAX_CSTR_LEN: usize = 4096;
+    // 使用 CStr::from_ptr 安全读取 C 字符串
     let path_str = {
-        let slice = std::slice::from_raw_parts(dict_path as *const u8, MAX_CSTR_LEN);
-        let end = slice.iter().position(|&b| b == 0).unwrap_or(MAX_CSTR_LEN);
-        let c_str = CStr::from_bytes_with_nul_unchecked(&slice[..=end]);
+        let c_str = CStr::from_ptr(dict_path);
         match c_str.to_str() {
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),
@@ -190,11 +188,9 @@ pub unsafe extern "C" fn wbw_ime_input_text(
         return ptr::null_mut();
     }
     let ime = &mut *ime;
-    const MAX_CSTR_LEN: usize = 4096;
+    // 使用 CStr::from_ptr 安全读取 C 字符串
     let text_str = {
-        let slice = std::slice::from_raw_parts(text as *const u8, MAX_CSTR_LEN);
-        let end = slice.iter().position(|&b| b == 0).unwrap_or(MAX_CSTR_LEN);
-        let c_str = CStr::from_bytes_with_nul_unchecked(&slice[..=end]);
+        let c_str = CStr::from_ptr(text);
         match c_str.to_str() {
             Ok(s) => s,
             Err(_) => return ptr::null_mut(),

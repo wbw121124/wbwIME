@@ -20,16 +20,16 @@ struct RECT {
 // ========== Helper: get context from thread_mgr ==========
 
 unsafe fn get_context(thread_mgr: *mut c_void) -> Option<*mut c_void> {
-    // 权威链路（msctf.idl）：ITfThreadMgr::GetFocus(=9) -> ITfDocumentMgr，
+    // 权威链路（msctf.idl）：ITfThreadMgr::GetFocus -> ITfDocumentMgr，
     // ITfDocumentMgr::GetTop(=6) -> ITfContext。
-    // vtable 布局 (IUnknown 3 + ITfThreadMgr 7):
+    // vtable 布局 (IUnknown 3 + ITfThreadMgr 4):
     //   [0]=QueryInterface [1]=AddRef [2]=Release
     //   [3]=CreateDocumentMgr [4]=EnumDocumentMgrs [5]=GetFocus
-    //   [6]=SetFocus [7]=IsThreadFocus [8]=GetFunctionProvider [9]=GetFocus
-    // 注：索引 5 为 SetFocus，索引 9 才是 GetFocus。
+    //   [6]=SetFocus [7]=IsThreadFocus [8]=GetFunctionProvider [9]=GetThread
+    // 注：索引 5 为 GetFocus，原误用索引 9（GetThread），现改为 7。
     let tm_vtable = *(thread_mgr as *const *const usize);
     let get_focus_fn: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> HRESULT =
-        std::mem::transmute(*tm_vtable.add(9));
+        std::mem::transmute(*tm_vtable.add(7));
     let mut doc_mgr: *mut c_void = std::ptr::null_mut();
     if get_focus_fn(thread_mgr, &mut doc_mgr) != S_OK || doc_mgr.is_null() {
         return None;
@@ -276,6 +276,11 @@ struct EditSessionVtable {
     do_edit_session: unsafe extern "system" fn(*mut c_void, u32) -> i32,
 }
 
+#[repr(C)]
+struct EditSession {
+    lp_vtbl: *const EditSessionVtable,
+}
+
 static EDIT_SESSION_VTABLE: EditSessionVtable = EditSessionVtable {
     query_interface: es_qi,
     add_ref: es_add_ref,
@@ -321,7 +326,10 @@ pub unsafe fn get_caret_screen_coords(thread_mgr: *mut c_void) -> Option<(i32, i
             *mut i64,
         ) -> HRESULT = std::mem::transmute(*ctx_vtable.add(3));
 
-        let sink = &EDIT_SESSION_VTABLE as *const _ as *mut c_void;
+        let session = EditSession {
+            lp_vtbl: &EDIT_SESSION_VTABLE,
+        };
+        let sink = Box::into_raw(Box::new(session)) as *mut c_void;
         let mut _edit_cookie: i64 = 0;
         let hr = req_fn(
             context,
@@ -334,6 +342,8 @@ pub unsafe fn get_caret_screen_coords(thread_mgr: *mut c_void) -> Option<(i32, i
         SESSION_CTX.with(|c| c.set(std::ptr::null_mut()));
         SESSION_JOB.with(|j| *j.borrow_mut() = None);
         release_obj(context);
+
+        drop(Box::from_raw(sink as *mut EditSession));
 
         if hr != S_OK {
             return None;
@@ -378,7 +388,10 @@ pub unsafe fn insert_text_at_caret(thread_mgr: *mut c_void, text: &str) -> bool 
             *mut i64,
         ) -> HRESULT = std::mem::transmute(*ctx_vtable.add(3));
 
-        let sink = &EDIT_SESSION_VTABLE as *const _ as *mut c_void;
+        let session = EditSession {
+            lp_vtbl: &EDIT_SESSION_VTABLE,
+        };
+        let sink = Box::into_raw(Box::new(session)) as *mut c_void;
         let mut _edit_cookie: i64 = 0;
         let hr = req_fn(
             context,
@@ -391,6 +404,8 @@ pub unsafe fn insert_text_at_caret(thread_mgr: *mut c_void, text: &str) -> bool 
         SESSION_CTX.with(|c| c.set(std::ptr::null_mut()));
         SESSION_JOB.with(|j| *j.borrow_mut() = None);
         release_obj(context);
+
+        drop(Box::from_raw(sink as *mut EditSession));
 
         if hr != S_OK {
             return false;
