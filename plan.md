@@ -1535,3 +1535,51 @@ wbw-types:    0 passed (纯类型)
 | # | 问题 | 位置 |
 |---|------|------|
 | P4-1 | README 缺少 l0 section 配置说明 | README.md:90-98 |
+
+---
+
+## Round 22 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | 无新发现 P0 问题 | - | ✅ |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | cf_qi 未检查 riid null（子代理已修复） | dll.rs:68 | ✅ 已修复 |
+| P1-2 | README 配置示例缺少 smooth_method | README.md:96 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | clipboard_paste 150ms sleep 硬编码 | output.rs:463 |
+| P2-2 | 硬编码 QWERTY 扫描码 | output.rs:481-486 |
+| P2-3 | fst_dict fuzzy_lookup 全表扫描 O(n) | fst_dict.rs:202-238 |
+| P2-4 | IPC 端口 45123 硬编码 | lib.rs (ipc) |
+| P2-5 | HOOK_THREAD_ID Mutex 在 hook 回调中 | hook.rs:113 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | 乱码注释（非 UTF-8） | text_service.rs:442-443, dll.rs:313 |
+| P3-2 | state.rs ImeState 12 个公开字段 | state.rs:7 |
+| P3-3 | fst_dict edit_distance 可优化空间 | fst_dict.rs:400-429 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | 考虑用命名管道替代硬编码端口 | lib.rs (ipc) |
+| P4-2 | 考虑 memmap2 加载字典 | fst_dict.rs:65 |
+| P4-3 | IME_STATE 应改为 per-instance | text_service.rs:18 |
+
+### 修复计划
+
+#### P1 优先级
+- P1-2: README 添加 smooth_method 配置示例
