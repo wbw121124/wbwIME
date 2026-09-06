@@ -405,7 +405,7 @@ pub(crate) unsafe extern "system" fn ts_add_ref(this: *mut c_void) -> ULONG {
         let ts = unsafe { &*(this as *const TextService) };
         ts.ref_count.fetch_add(1, Ordering::AcqRel) as ULONG + 1
     }))
-    .unwrap_or_default()
+    .unwrap_or(1)
 }
 
 unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {

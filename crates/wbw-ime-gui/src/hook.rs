@@ -52,8 +52,8 @@ pub static CHINESE_MODE: AtomicBool = AtomicBool::new(false);
 type KeyHandler = Box<dyn Fn(u32, Option<char>) -> GuiState + Send + Sync>;
 
 static HANDLER: OnceLock<Mutex<Option<KeyHandler>>> = OnceLock::new();
-/// 已被本进程吞掉、仍处于按下状态的键（keyup 也吞掉，防止应用端配对错乱）。
-static EATEN_DOWN: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+/// 是否有键被本进程吞掉且仍处于按下状态（AtomicBool 避免钩子回调持有 Mutex 锁）。
+static EATEN_DOWN: AtomicBool = AtomicBool::new(false);
 
 /// 单一实例守卫（命名 Mutex 句柄，进程存活期间持有）。
 static INSTANCE_HANDLE: OnceLock<usize> = OnceLock::new();
@@ -126,7 +126,7 @@ unsafe extern "system" fn ll_keyboard_proc(
                 }
                 // Shift 键切换中文模式（composing 时不切换，但仍然透传给引擎处理）
                 if vkey == VK_SHIFT {
-                    let eating = !EATEN_DOWN.lock().unwrap_or_else(|e| e.into_inner()).is_empty();
+                    let eating = EATEN_DOWN.load(Ordering::Acquire);
                     if !eating {
                         let old = CHINESE_MODE.load(Ordering::Acquire);
                         CHINESE_MODE.store(!old, Ordering::Release);
@@ -135,7 +135,7 @@ unsafe extern "system" fn ll_keyboard_proc(
                     return CallNextHookEx(HHOOK::default(), code, wparam, lparam);
                 }
                 let chinese = is_chinese_foreground();
-                let eating = !EATEN_DOWN.lock().unwrap_or_else(|e| e.into_inner()).is_empty();
+                let eating = EATEN_DOWN.load(Ordering::Acquire);
                 if !chinese && !eating {
                     return CallNextHookEx(HHOOK::default(), code, wparam, lparam);
                 }
@@ -153,10 +153,7 @@ unsafe extern "system" fn ll_keyboard_proc(
                     if let Some((code, ch)) = rotated {
                     let eaten = process_key(code, ch);
                     if eaten {
-                        let mut eaten = EATEN_DOWN.lock().unwrap_or_else(|e| e.into_inner());
-                        if !eaten.contains(&info.vkCode) {
-                            eaten.push(info.vkCode);
-                        }
+                        EATEN_DOWN.store(true, Ordering::Release);
                         return 1;
                     }
                     }
@@ -164,9 +161,8 @@ unsafe extern "system" fn ll_keyboard_proc(
                 CallNextHookEx(HHOOK::default(), code, wparam, lparam)
             }
             WM_KEYUP => {
-                let mut eaten = EATEN_DOWN.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(pos) = eaten.iter().position(|v| *v == info.vkCode) {
-                    eaten.remove(pos);
+                if EATEN_DOWN.load(Ordering::Acquire) {
+                    EATEN_DOWN.store(false, Ordering::Release);
                     return 1;
                 }
                 CallNextHookEx(HHOOK::default(), code, wparam, lparam)
