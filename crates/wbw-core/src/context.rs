@@ -48,13 +48,14 @@ impl ContextManager {
     /// 添加字符到缓冲区
     pub fn push_char(&mut self, ch: char) {
         self.save_history();
+        let ch_len = ch.len_utf8();
         self.current.buffer.insert(self.current.cursor, ch);
+        self.current.cursor += ch_len;
         if self.current.buffer.len() > MAX_BUFFER_LEN {
-            let ch_len = ch.len_utf8();
+            // 回滚：移除刚插入的字符
+            self.current.cursor -= ch_len;
             self.current.buffer.drain(self.current.cursor..self.current.cursor + ch_len);
-            return;
         }
-        self.current.cursor += ch.len_utf8();
     }
 
     /// 删除缓冲区末尾字符

@@ -235,7 +235,7 @@ unsafe extern "system" fn ks_add_ref(this: *mut c_void) -> ULONG {
         let s = unsafe { &*(this as *const KeyEventSink) };
         s.ref_count.fetch_add(1, Ordering::AcqRel) as ULONG + 1
     }))
-    .unwrap_or_default()
+    .unwrap_or(1)
 }
 
 unsafe extern "system" fn ks_release(this: *mut c_void) -> ULONG {

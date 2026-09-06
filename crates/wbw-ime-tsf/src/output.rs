@@ -109,6 +109,7 @@ unsafe extern "system" fn es_qi(
         if *iid == IID_IUNKNOWN || *iid == IID_ITF_EDIT_SESSION {
             unsafe {
                 *ppv = _this;
+                es_add_ref(_this);
             }
             return S_OK;
         }

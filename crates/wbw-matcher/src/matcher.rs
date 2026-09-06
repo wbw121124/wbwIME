@@ -193,11 +193,7 @@ impl Matcher {
         }
 
         // 按分数降序排序后，全局按 text 去重（保留首个即最高分）
-        candidates.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
         wbw_core::CandidateFilter::dedup_by_text(&mut candidates);
         candidates
     }
@@ -299,11 +295,7 @@ impl Matcher {
         }
 
         // 按 (text, code) 去重并保留最高分
-        candidates.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        candidates.sort_by(|a, b| b.score.total_cmp(&a.score));
         wbw_core::CandidateFilter::deduplicate(&mut candidates);
         candidates
     }
