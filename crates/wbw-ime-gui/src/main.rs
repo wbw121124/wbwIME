@@ -384,6 +384,7 @@ fn hook_paste(text: &str) {
         use windows_sys::Win32::System::DataExchange::{
             CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
         };
+        use windows_sys::Win32::Foundation::GlobalFree;
         use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock};
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
             SendInput, INPUT, INPUT_0, KEYBDINPUT, KEYEVENTF_KEYUP,
@@ -397,7 +398,9 @@ fn hook_paste(text: &str) {
         let h_mem = GlobalAlloc(0x0002, size);
         if !h_mem.is_null() {
             let ptr = GlobalLock(h_mem) as *mut u16;
-            if !ptr.is_null() {
+            if ptr.is_null() {
+                GlobalFree(h_mem);
+            } else {
                 std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
                 GlobalUnlock(h_mem);
                 SetClipboardData(1, h_mem);

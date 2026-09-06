@@ -7,7 +7,7 @@
 //! 键位门控：仅当前台线程键盘布局为中文（`LANG_CHINESE`）时接管字母/数字/功能键，
 //! 避免在英文布局下吞掉正常输入。Shift 键可手动切换中文模式作为覆盖。
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Mutex, OnceLock};
 
@@ -87,7 +87,7 @@ fn run_hook_thread() {
 }
 
 /// 主持钩子的线程 ID（识别前台线程是否仍是本钩子线程，用于布局门控）。
-static HOOK_THREAD_ID: Mutex<Option<u32>> = Mutex::new(None);
+static HOOK_THREAD_ID: AtomicU32 = AtomicU32::new(0);
 /// 低级键盘钩子回调。
 unsafe extern "system" fn ll_keyboard_proc(
     code: i32,
@@ -109,12 +109,9 @@ unsafe extern "system" fn ll_keyboard_proc(
         }
 
         // 同步本钩子线程 ID（仅占位，保留后续诊断能力）
-        {
-            let mut slot = HOOK_THREAD_ID.lock().unwrap_or_else(|e| e.into_inner());
-            if slot.is_none() {
-                let tid = windows_sys::Win32::System::Threading::GetCurrentThreadId();
-                *slot = Some(tid);
-            }
+        if HOOK_THREAD_ID.load(Ordering::Relaxed) == 0 {
+            let tid = windows_sys::Win32::System::Threading::GetCurrentThreadId();
+            HOOK_THREAD_ID.store(tid, Ordering::Relaxed);
         }
 
         match wparam as u32 {
