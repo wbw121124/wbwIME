@@ -1631,3 +1631,55 @@ wbw-types:    0 passed (纯类型)
 #### P0 优先级
 - P0-1: 修正 TSF_SELECTION 结构体大小
 - P0-2: ks_release/ts_release panic 返回值改为安全值
+
+---
+
+## Round 24 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P0-1 | CAS loop ABA 理论风险（cf_release/ts_release） | dll.rs:100-116, text_service.rs:414-427 |
+| P0-2 | TextService thread_mgr 指针在 ts_deactivate 未调用时泄漏 | text_service.rs:322-328 |
+| P0-3 | SetClipboardData 失败时 h_mem 泄漏 | output.rs:457-471 |
+
+### P1 — High
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P1-1 | ks_release 对 static KEY_EVENT_SINK ref_count 可到 0 | text_service.rs:265-283 |
+| P1-2 | ts_release panic 路径 TEXT_SERVICE_COUNT 双重减 | text_service.rs:429-432 |
+| P1-3 | fbterm recv_message 使用 from_ne_bytes 跨平台字节序 | fbterm/main.rs:236-247 |
+| P1-4 | clipboard_paste 150ms sleep 阻塞 TSF COM 回调线程 | output.rs:477 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | 大量手写 vtable + transmute 无类型安全 | text_service.rs, output.rs, dll.rs |
+| P2-2 | TsfContext unsafe Send/Sync 依赖注释 | text_service.rs:44-47 |
+| P2-3 | IPC 无认证本地任意进程可连接 | wbw-ime-ipc/src/lib.rs |
+| P2-4 | wbw-ime-native C API 内存管理依赖调用方 | wbw-ime-native/src/lib.rs:323-347 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | 全局 #![allow(clippy::upper_case_acronyms, dead_code)] | lib.rs:1 |
+| P3-2 | 魔数硬编码散布代码中 | text_service.rs:657, state.rs:197 |
+| P3-3 | dll.rs 乱码注释（GBK 编码） | dll.rs:313,317-321 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | 无集成测试覆盖 TSF DLL COM 生命周期 | - |
+| P4-2 | edit_distance 在 wbw-dict 和 wbw-matcher 中重复 | fst_dict.rs:400, fuzzy.rs:182 |
+| P4-3 | plan.md 文档结构严重混乱需精简 | plan.md |
+
+### 修复计划
+
+#### P0 优先级
+- P0-3: SetClipboardData 失败时 GlobalFree(h_mem)
+- P0-1: 改用 fetch_sub + 检查返回值替代 CAS loop
