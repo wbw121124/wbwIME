@@ -980,3 +980,38 @@ wbw-types:    0 passed (纯类型)
 #### P2 优先级
 - P2-1: CreateInstance 拒绝聚合
 - P2-2: EditSession QI 响应 IID_ITfEditSession
+
+---
+
+## Round 10 最终确认（2026-09-04）
+
+### 修复验证
+
+| Round | 修复项 | 状态 |
+|-------|--------|------|
+| 1 | COM catch_unwind | ✅ |
+| 2 | IPC 认证 | ✅ |
+| 3 | usize 转换 | ✅ |
+| 4 | 颜色解析 | ✅ |
+| 5 | 配置日志 | ✅ |
+| 6 | README 更新 | ✅ |
+| 7 | fbterm 字母键 | ✅ |
+| - | buffer 长度检查 | ✅ |
+| - | config smooth 类型 | ✅ |
+| - | dict_path 默认值统一 | ✅ |
+| - | native cursor 计算 | ✅ |
+| - | CStr 长度限制 | ✅ |
+| - | packed struct UB | ✅ |
+| - | cursor 截断 | ✅ |
+| - | 临时 SVG 清理 | ✅ |
+| - | 默认值统一 | ✅ |
+| 9 | ITfKeystrokeMgr vtable 修正 | ✅ |
+| 9 | DllGetClassObject riid 验证 | ✅ |
+| 9 | CreateInstance 聚合拒绝 | ✅ |
+| 9 | EditSession QI 响应 | ✅ |
+
+### 审查结论
+
+**无 Critical/High 问题，代码可以发布。**
+
+所有 Round 1-9 修复已确认正确落地。代码库整体质量良好，所有 Critical/High 级别的安全、正确性、内存安全问题已修复。
