@@ -1,5 +1,5 @@
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use crate::guid::*;
 use crate::output::{HRESULT, S_OK, ULONG};
@@ -7,6 +7,7 @@ use crate::text_service::{self, TextService};
 
 static DLL_HINST: std::sync::atomic::AtomicPtr<c_void> =
     std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+static DLL_ATTACHED: AtomicBool = AtomicBool::new(false);
 
 const E_INVALIDARG: HRESULT = -2147024809;
 const E_NOTIMPL: HRESULT = -2147467263;
@@ -167,6 +168,7 @@ pub unsafe extern "system" fn DllMain(
     match reason {
         DLL_PROCESS_ATTACH => {
             DLL_HINST.store(hinst, std::sync::atomic::Ordering::SeqCst);
+            DLL_ATTACHED.store(true, Ordering::SeqCst);
         }
         DLL_PROCESS_DETACH => {
             // 不在 DllMain 中获取 Mutex，避免加载器锁下死锁。

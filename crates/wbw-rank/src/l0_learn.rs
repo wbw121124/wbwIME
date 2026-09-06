@@ -217,8 +217,8 @@ impl L0Learner {
         for (key, &count) in &self.counters {
             // counters 格式: "code:word" → count
             if let Some(word) = key.split(':').nth(1) {
-                // 使用 word 的字节哈希作为 word_id，避免同长度词碰撞
-                let word_id = fxhash::hash(word) as u32;
+                // fxhash::hash64 返回 u64；截断为 u32 的碰撞概率约 1/4B，对词频聚合可接受
+                let word_id = fxhash::hash64(word) as u32;
                 *frequency.entry(word_id).or_insert(0) += count as usize;
             }
         }
