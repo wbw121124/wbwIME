@@ -1093,3 +1093,73 @@ wbw-types:    0 passed (纯类型)
 **无 P0/P1 问题，代码可以发布。**
 
 所有 Round 1-11 修复已确认正确落地。编译零 warning、零 error。
+
+---
+
+## Round 13 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P0-1 | ITfThreadMgr::GetFocus vtable 偏移错误（index 7 应为 9） | output.rs:27 |
+| P0-2 | unsafe impl Send/Sync 缺少 Safety 文档 | text_service.rs:35-36,197,294 |
+| P0-3 | std::slice::from_raw_parts 未验证指针长度 | native/lib.rs:72,195 |
+
+### P1 — High
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P1-1 | cf_create_instance 返回 E_NOTIMPL 应为 E_NOINTERFACE | dll.rs:145 |
+| P1-2 | ts_release/ks_release panic 后返回 0 | text_service.rs:377,246 |
+| P1-3 | clipboard_paste sleep 50ms 未提前释放 CLIPBOARD_LOCK | output.rs:404,434 |
+| P1-4 | wide.len() as i32 整数溢出风险 | output.rs:254 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | InsertTextAtSelection vtable 偏移可能错误（index 3 应为 4） | output.rs:237 |
+| P2-2 | IPC 无认证机制 | lib.rs |
+| P2-3 | L0Learner fxhash 碰撞风险 | l0_learn.rs:221 |
+| P2-4 | L0Learner save_snapshot 非原子写入 | l0_learn.rs:175 |
+| P2-5 | get_dll_path 返回空 PathBuf 检查失效 | dll.rs:366-385 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | GlobalAlloc 使用魔数 0x0002 | output.rs:418 |
+| P3-2 | get_dll_path 缓冲区固定 260 字符 | dll.rs:373 |
+| P3-3 | 缺少 #[must_use] 标注 | 多处 |
+| P3-4 | dead code 未清理 | error.rs, l0_learn.rs |
+| P3-5 | 通配符导入污染命名空间 | ipc.rs:272 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | 未实现 ITfCompositionSink | text_service.rs |
+| P4-2 | 未实现 ITfThreadMgrEventSink | text_service.rs |
+| P4-3 | clipboard_paste 硬编码 scan code | output.rs:452-457 |
+| P4-4 | fuzzy_lookup 全表扫描 O(n) | fst_dict.rs:202 |
+
+### 修复计划
+
+#### P0 优先级
+- P0-1: ITfThreadMgr::GetFocus vtable 从 index 7 改为 9
+- P0-2: 添加 Safety 文档到 unsafe impl Send/Sync
+
+#### P1 优先级
+- P1-1: cf_create_instance 返回 E_NOINTERFACE
+- P1-2: ts_release/ks_release panic 返回 1
+- P1-3: clipboard_paste 提前 drop CLIPBOARD_LOCK
+- P1-4: wide.len() as i32 添加安全检查
+
+#### P2 优先级
+- P2-1: 验证 InsertTextAtSelection vtable 偏移
+- P2-4: save_snapshot 使用临时文件+重命名
+
+#### P3 优先级
+- P3-1: GlobalAlloc 使用 GMEM_MOVEABLE 常量
+- P3-2: get_dll_path 使用循环增长缓冲区
