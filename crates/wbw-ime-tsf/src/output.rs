@@ -467,7 +467,11 @@ pub fn clipboard_paste(text: &str) {
         }
         std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
         GlobalUnlock(h_mem);
-        SetClipboardData(1, h_mem);
+        if SetClipboardData(1, h_mem).is_null() {
+            GlobalFree(h_mem);
+            CloseClipboard();
+            return;
+        }
         CloseClipboard();
     }
     drop(_guard);  // 提前释放锁

@@ -97,20 +97,12 @@ unsafe extern "system" fn cf_add_ref(this: *mut c_void) -> ULONG {
 unsafe extern "system" fn cf_release(this: *mut c_void) -> ULONG {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let f = unsafe { &*(this as *const ClassFactory) };
-        loop {
-            let prev = f.ref_count.load(Ordering::Acquire);
-            if prev <= 1 {
-                // CAS 1→0: only the thread that succeeds frees the object
-                if f.ref_count.compare_exchange(1, 0, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
-                    unsafe { drop(Box::from_raw(this as *mut ClassFactory)); }
-                    return 0;
-                }
-                // CAS failed → another thread modified ref_count, retry
-                continue;
-            }
-            if f.ref_count.compare_exchange(prev, prev - 1, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
-                return (prev - 1) as ULONG;
-            }
+        let prev = f.ref_count.fetch_sub(1, Ordering::AcqRel);
+        if prev == 1 {
+            unsafe { drop(Box::from_raw(this as *mut ClassFactory)); }
+            0
+        } else {
+            (prev - 1) as ULONG
         }
     }))
     .unwrap_or(0)
