@@ -1344,3 +1344,57 @@ wbw-types:    0 passed (纯类型)
 #### P1 优先级
 - P1-3: IPC 帧读取端添加 MAX_FRAME_SIZE 检查
 - P1-4: fxhash 改用 hash64
+
+---
+
+## Round 18 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P0-1 | ITfThreadMgr vtable index 7 是 IsThreadFocus 不是 GetFocus（应为 5） | output.rs:29,32 |
+| P0-2 | cf_release 无 fetch_sub 导致 ClassFactory 永远不释放 | dll.rs:97-108 |
+| P0-3 | plan.md 统计数据三重矛盾 + "终审"结论逻辑矛盾 | plan.md |
+
+### P1 — High
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P1-1 | Mutex poison 后 into_inner() 传播不一致状态（12+ 处） | text_service.rs, ipc.rs, output.rs |
+| P1-2 | clipboard_paste GlobalLock null 时 h_mem 未释放 | output.rs:444-453 |
+| P1-3 | TCP IPC 无认证，本地任意进程可注入候选 | ipc.rs:75,84 |
+| P1-4 | config.toml smooth 无法指定平滑方法 | config.toml:37 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | EditSession Box::into_raw 后无 defer guard | output.rs:329-346 |
+| P2-2 | DLL_PROCESS_DETACH 无清理 | dll.rs:173-177 |
+| P2-3 | get_dll_path 循环无上界 | dll.rs:376-393 |
+| P2-4 | fuzzy_lookup 全表扫描无缓存 | fst_dict.rs:202-239 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | #![allow(dead_code, private_interfaces)] | dll.rs:1 |
+| P3-2 | ks_add_ref/ks_release 对 static 对象引用计数语义错误 | text_service.rs:211-267 |
+| P3-3 | candidate.rs CandidateConverter 有 #[allow(dead_code)] | candidate.rs:249 |
+| P3-4 | fst_dict.rs FstDictError 有 #[allow(dead_code)] | fst_dict.rs:21 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | RequestEditSession 无超时 | output.rs:334-340 |
+| P4-2 | clipboard_paste Sleep(50) 硬编码 | output.rs:456 |
+| P4-3 | ensure_connected 重试阻塞 ~10.5s | ipc.rs:83-108 |
+
+### 修复计划
+
+#### P0 优先级
+- P0-1: ITfThreadMgr::GetFocus vtable 从 index 7 改为 5
+- P0-2: cf_release 添加 fetch_sub + prev==1 检查
+- P0-3: plan.md 统计数据再次统一
