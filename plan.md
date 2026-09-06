@@ -449,7 +449,7 @@ wbw-types:    0 passed (纯类型)
 ### 总计修复
 | 轮次 | 修复数 | 测试数 | Commit |
 |------|--------|--------|--------|
-| Round 1 | 40 | 128→159 | `e91c219` |
+| Round 1 | 25+ | 128→159 | `e91c219` |
 | Round 2 | rebase | 159 | `e91c219` |
 | Round 3 | 10 | 159 | `61e41df` |
 | Round 4 | 9 | 159 | `79bc2a1` |
@@ -565,7 +565,7 @@ wbw-types:    0 passed (纯类型)
 ### 总计修复
 | 轮次 | 修复数 | 测试数 | Commit |
 |------|--------|--------|--------|
-| Round 1 | 40 | 128→159 | `e91c219` |
+| Round 1 | 25+ | 128→159 | `e91c219` |
 | Round 2 | rebase | 159 | `e91c219` |
 | Round 3 | 10 | 159 | `61e41df` |
 | Round 4 | 9 | 159 | `79bc2a1` |
@@ -749,7 +749,7 @@ wbw-types:    0 passed (纯类型)
 
 | # | 严重性 | 问题 | 位置 |
 |---|--------|------|------|
-| R4-01 | Medium | plan.md 统计表重复矛盾（40 vs 25） | plan.md:183-241 |
+| R4-01 | Medium | plan.md 统计表重复矛盾（已统一为25+） | plan.md:183-241 |
 | R4-02 | Medium | README smooth 类型错误（字符串 vs 数值） | README.md:96 |
 | R4-03 | Low | config.rs dict_path 默认值与 config.toml 不一致 | config.rs:37 |
 
@@ -835,7 +835,7 @@ wbw-types:    0 passed (纯类型)
 |---|--------|------|------|
 | D7-01 | High | NgramConfig.order 默认值 2 vs 配置值 3 | lib.rs:221 vs config.toml:35 |
 | D7-02 | High | DictConfig.base_path 默认值 base.cin vs pinyin.cin | lib.rs:285 vs config.toml:3 |
-| D7-03 | Medium | plan.md 修复统计表重复矛盾（40 vs 25） | plan.md:183-242 |
+| D7-03 | Medium | plan.md 修复统计表重复矛盾（已统一为25+） | plan.md:183-242 |
 
 ### 修复计划
 
@@ -1131,7 +1131,7 @@ wbw-types:    0 passed (纯类型)
 | # | 问题 | 位置 |
 |---|------|------|
 | P0-1 | ts_release 潜在 Use-After-Free（fetch_sub 后无同步屏障） | text_service.rs:382-395 |
-| P0-2 | plan.md 统计数据三重矛盾（40/25/25） | plan.md:72-87,183-190,235-242 |
+| P0-2 | plan.md 统计数据三重矛盾（已统一为25+） | plan.md:72-87,183-190,235-242 |
 
 ### P1 — High
 
@@ -1186,7 +1186,7 @@ wbw-types:    0 passed (纯类型)
 | P0-1 | ks_release 引用计数竞争导致下溢/UAF | text_service.rs:251-264 |
 | P0-2 | ts_release compare_exchange 竞争导致 UAF | text_service.rs:389-404 |
 | P0-3 | COM QueryInterface 返回不同指针违反对称性 | text_service.rs:361-368 |
-| P0-4 | plan.md 统计数据三重矛盾（40/25/78+） | plan.md |
+| P0-4 | plan.md 统计数据三重矛盾（已统一为25+） | plan.md |
 
 ### P1 — High
 
@@ -1299,7 +1299,7 @@ wbw-types:    0 passed (纯类型)
 |---|------|------|
 | P0-1 | DllMain loader lock 内调用 log::log() 做文件 I/O | dll.rs DllMain |
 | P0-2 | ITfThreadMgr vtable 偏移可能仍错误（7 可能不是 GetFocus） | output.rs:32 |
-| P0-3 | plan.md 统计数据三重矛盾（40/25/78+） | plan.md |
+| P0-3 | plan.md 统计数据三重矛盾（已统一为25+） | plan.md |
 
 ### P1 — High
 
@@ -1355,7 +1355,7 @@ wbw-types:    0 passed (纯类型)
 |---|------|------|
 | P0-1 | ITfThreadMgr vtable index 7 是 IsThreadFocus 不是 GetFocus（应为 5） | output.rs:29,32 |
 | P0-2 | cf_release 无 fetch_sub 导致 ClassFactory 永远不释放 | dll.rs:97-108 |
-| P0-3 | plan.md 统计数据三重矛盾 + "终审"结论逻辑矛盾 | plan.md |
+| P0-3 | plan.md 统计数据三重矛盾（已统一为25+） + "终审"结论逻辑矛盾 | plan.md |
 
 ### P1 — High
 

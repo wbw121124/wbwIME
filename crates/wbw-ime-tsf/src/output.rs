@@ -22,11 +22,10 @@ struct RECT {
 unsafe fn get_context(thread_mgr: *mut c_void) -> Option<*mut c_void> {
     // 权威链路（msctf.idl）：ITfThreadMgr::GetFocus -> ITfDocumentMgr，
     // ITfDocumentMgr::GetTop(=6) -> ITfContext。
-    // vtable 布局 (IUnknown 3 + ITfThreadMgr 4):
+    // vtable 布局 (IUnknown 3 + ITfThreadMgr 8):
     //   [0]=QueryInterface [1]=AddRef [2]=Release
-    //   [3]=CreateDocumentMgr [4]=EnumDocumentMgrs [5]=GetFocus
-    //   [6]=SetFocus [7]=IsThreadFocus [8]=GetFunctionProvider [9]=GetThread
-    // 注：索引 5 为 GetFocus，原误用索引 9（GetThread），现改为 7。
+    //   [3]=Activate [4]=Deactivate [5]=CreateDocumentMgr
+    //   [6]=EnumDocumentMgrs [7]=GetFocus [8]=SetFocus [9]=IsThreadFocus
     let tm_vtable = *(thread_mgr as *const *const usize);
     let get_focus_fn: unsafe extern "system" fn(*mut c_void, *mut *mut c_void) -> HRESULT =
         std::mem::transmute(*tm_vtable.add(7));
@@ -429,6 +428,7 @@ pub fn clipboard_paste(text: &str) {
         use windows_sys::Win32::System::DataExchange::{
             CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
         };
+        use windows_sys::Win32::Foundation::GlobalFree;
         use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock};
 
         const GMEM_MOVEABLE: u32 = 0x0002;
@@ -443,6 +443,7 @@ pub fn clipboard_paste(text: &str) {
         }
         let ptr = GlobalLock(h_mem) as *mut u16;
         if ptr.is_null() {
+            GlobalFree(h_mem);
             CloseClipboard();
             return;
         }
