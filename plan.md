@@ -1069,3 +1069,27 @@ wbw-types:    0 passed (纯类型)
 - P1-2: ks_add_ref panic 返回 1
 - P1-3: push_char 修正回退逻辑
 - P1-4: partial_cmp 改为 total_cmp
+
+---
+
+## Round 12 最终确认（2026-09-04）
+
+### 修复验证
+
+| Round | 修复项 | 状态 |
+|-------|--------|------|
+| 1-8 | 早期修复 | ✅ |
+| 9 | ITfKeystrokeMgr vtable 修正 | ✅ |
+| 9 | DllGetClassObject riid 验证 | ✅ |
+| 9 | CreateInstance 聚合拒绝 | ✅ |
+| 9 | EditSession QI 响应 | ✅ |
+| 11 | EditSession QI AddRef | ✅ |
+| 11 | ks_add_ref panic 返回 1 | ✅ |
+| 11 | push_char 回退逻辑 | ✅ |
+| 11 | partial_cmp 改 total_cmp | ✅ |
+
+### 审查结论
+
+**无 P0/P1 问题，代码可以发布。**
+
+所有 Round 1-11 修复已确认正确落地。编译零 warning、零 error。
