@@ -251,7 +251,14 @@ unsafe extern "system" fn ks_add_ref(this: *mut c_void) -> ULONG {
 unsafe extern "system" fn ks_release(this: *mut c_void) -> ULONG {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let s = unsafe { &*(this as *const KeyEventSink) };
-        s.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1
+        let prev = s.ref_count.fetch_sub(1, Ordering::AcqRel);
+        if prev <= 1 {
+            // 防止下溢
+            s.ref_count.store(0, Ordering::Relaxed);
+            0
+        } else {
+            (prev - 1) as ULONG
+        }
     }))
     .unwrap_or(1)  // COM 规范要求 Release 返回 >= 0，返回 1 表示对象仍存活
 }
@@ -382,14 +389,16 @@ pub(crate) unsafe extern "system" fn ts_add_ref(this: *mut c_void) -> ULONG {
 unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let ts = unsafe { &*(this as *const TextService) };
-        let count = ts.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1;
-        if count == 0 {
-            TEXT_SERVICE_COUNT.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        if ts.ref_count.compare_exchange(1, 0, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
+            TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
             unsafe {
                 let _ = Box::from_raw(this as *mut TextService);
             }
+            0
+        } else {
+            // 其他线程已持有引用，不释放
+            ts.ref_count.load(Ordering::Acquire) as ULONG
         }
-        count
     }))
     .unwrap_or(1)  // COM 规范要求 Release 返回 >= 0，返回 1 表示对象仍存活
 }
