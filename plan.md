@@ -1738,3 +1738,41 @@ wbw-types:    0 passed (纯类型)
 - P1-2: ts_add_ref panic 返回 1
 - P1-3: EATEN_DOWN 改为 AtomicBool
 - P1-4: hook_paste 添加 GlobalFree
+
+---
+
+## Round 26 P0-P4 全级别审查（2026-09-06）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | COM Release CAS 无限循环（cf/ks/ts_release）已修复 | dll.rs, text_service.rs | ✅ 已修复 |
+| P0-2 | plan.md 文档结构严重混乱 | plan.md | 待精简 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | ts_activate 错误路径 thread_mgr 释放配平已修复 | text_service.rs:538-546 | ✅ 已修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P2-1 | get_dll_path 无限增长缓冲区已修复 | dll.rs:377-398 | ✅ 已修复 |
+| P2-2 | EmptyClipboard 返回值未检查已修复 | output.rs:456 | ✅ 已修复 |
+| P2-3 | README 缺少故障排除/FAQ | README.md | 待补充 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | README 依赖图缺少 wbw-ime-fbterm | README.md:44-54 |
+| P3-2 | README 未提及 LICENSE 文件位置 | README.md:146 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | README 缺少开发环境搭建说明 | README.md |
