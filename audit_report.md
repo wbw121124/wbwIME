@@ -61,3 +61,50 @@
 1. **P0-1 (Cargo.toml 语法错误)**：已跳过（误报），文件正确。✅ 一致
 2. **P0-2 (can_split_into_syllables 回溯)**：已添加 memoization。✅ 一致
 3. **P0-3 (fuzzy_lookup 性能)**：已添加长度剪枝和结果限制，但仍为全表扫描。⚠️ 部分一致（文档说“使用 fst lev automaton”，实际为长度剪枝）
+---
+
+# 代码安全审查报告 (2026-09-06)
+
+**审查范围：** 51 个 .rs 文件，15 个 crate
+
+## 已修复的问题
+
+### P1-1: COM Release CAS 无限循环 (dll.rs, text_service.rs)
+
+**问题**: cf_release、ks_release、	s_release 三个函数在 prev <= 1 分支中只尝试 compare_exchange(1, 0, ...)。若 ref_count 已为 0（客户端多次调用 Release），CAS 永远失败，导致死循环。
+
+**修复**: 统一改为 CAS 循环，在 prev <= 0 时直接返回 0 避免无限循环。
+
+- dll.rs:97-112: cf_release — etch_sub 改为 CAS 循环
+- 	ext_service.rs:265-283: ks_release — 增加 prev <= 0 早退
+- 	ext_service.rs:411-433: 	s_release — 增加 prev <= 0 早退
+
+### P1-2: ts_activate 错误路径 thread_mgr 释放配平 (text_service.rs)
+
+**问题**: 当 	hread_mgr == punk（fallback 路径）时，AdviseKeyEventSink 失败后的 Release 会破坏宿主引用计数。
+
+**修复**: 在错误路径中，仅当 	hread_mgr != punk 时才 Release。
+
+- 	ext_service.rs:538-546
+
+### P2-4: get_dll_path 无限增长缓冲区 (dll.rs)
+
+**问题**: GetModuleFileNameW 异常时缓冲区无限增长。
+
+**修复**: 添加 32768 上限。
+
+- dll.rs:377-398
+
+### P2-5: EmptyClipboard 返回值未检查 (output.rs)
+
+**问题**: EmptyClipboard() 失败时未关闭剪贴板。
+
+**修复**: 检查返回值，失败时调用 CloseClipboard() 并返回。
+
+- output.rs:456
+
+## 验证结果
+
+- cargo check: 通过
+- cargo test: 174/174 通过
+- cargo clippy: 零 warning

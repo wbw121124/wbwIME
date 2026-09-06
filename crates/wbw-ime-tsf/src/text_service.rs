@@ -268,7 +268,10 @@ unsafe extern "system" fn ks_release(this: *mut c_void) -> ULONG {
         let s = unsafe { &*(this as *const KeyEventSink) };
         loop {
             let prev = s.ref_count.load(Ordering::Acquire);
-            if prev <= 1 {
+            if prev <= 0 {
+                return 0;
+            }
+            if prev == 1 {
                 if s.ref_count.compare_exchange(1, 0, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
                     return 0;
                 }
@@ -279,7 +282,7 @@ unsafe extern "system" fn ks_release(this: *mut c_void) -> ULONG {
             }
         }
     }))
-    .unwrap_or(0)  // panic 时返回 0，表示对象已释放（static 对象不会真正 UAF）
+    .unwrap_or(0)
 }
 
 // ========== TextService COM ==========
@@ -413,7 +416,10 @@ unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
         let ts = unsafe { &*(this as *const TextService) };
         loop {
             let prev = ts.ref_count.load(Ordering::Acquire);
-            if prev <= 1 {
+            if prev <= 0 {
+                return 0;
+            }
+            if prev == 1 {
                 if ts.ref_count.compare_exchange(1, 0, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
                     TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
                     unsafe { drop(Box::from_raw(this as *mut TextService)); }
@@ -429,7 +435,7 @@ unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
     .unwrap_or_else(|_| {
         TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
         0
-    })  // panic 时仍递减计数，确保 DLL 可以卸载
+    })
 }
 
 // ========== ITfTextInputProcessorEx ==========
@@ -538,9 +544,11 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
     if hr != S_OK {
         unsafe {
             *TSF_CTX.lock().unwrap_or_else(|e| e.into_inner()) = TsfContext::EMPTY;
-            let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
-                std::mem::transmute(*(*(thread_mgr as *const *const usize)).add(VTABLE_RELEASE));
-            release_fn(thread_mgr);
+            if thread_mgr != punk {
+                let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
+                    std::mem::transmute(*(*(thread_mgr as *const *const usize)).add(VTABLE_RELEASE));
+                release_fn(thread_mgr);
+            }
             ts.thread_mgr = std::ptr::null_mut();
         }
         return hr;

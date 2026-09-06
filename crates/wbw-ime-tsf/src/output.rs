@@ -453,7 +453,10 @@ pub fn clipboard_paste(text: &str) {
         if OpenClipboard(std::ptr::null_mut()) == 0 {
             return;
         }
-        EmptyClipboard();
+        if EmptyClipboard() == 0 {
+            CloseClipboard();
+            return;
+        }
         let h_mem = GlobalAlloc(GMEM_MOVEABLE, size);
         if h_mem.is_null() {
             CloseClipboard();
