@@ -1269,3 +1269,64 @@ wbw-types:    0 passed (纯类型)
 #### P0 优先级
 - P0-1: ks_release 使用 compare_exchange 循环
 - P0-2: ts_release 使用 fetch_sub + 检查 prev == 1
+
+---
+
+## Round 16 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P0-1 | ts_release fetch_sub 无 CAS 循环导致 UAF | text_service.rs:391-406 |
+| P0-2 | get_context ITfThreadMgr::GetFocus vtable 索引错误（9 应为 7） | output.rs:22-52 |
+| P0-3 | ks_test_key_down/ks_key_down pf_eaten 空指针解引用 | text_service.rs:610-613 |
+| P0-4 | get_caret_screen_coords static vtable 指针伪装为 COM 对象 | output.rs:324 |
+
+### P1 — High
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P1-1 | cf_release compare_exchange 无 CAS 循环 | dll.rs:96-107 |
+| P1-2 | ts_add_ref panic 返回 0 违反 COM 规范 | text_service.rs:383 |
+| P1-3 | clipboard_paste 50ms sleep 窗口期 SendInput 竞态 | output.rs:441-470 |
+| P1-4 | wbw_ime_create CStr 从_raw_parts 越界 | native/lib.rs:70-78 |
+| P1-5 | ensure_state_loaded 失败重置导致线程永久跳过 | text_service.rs:76-112 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | key_sink 字段存储 static 引用概念不一致 | text_service.rs:310,499 |
+| P2-2 | ref_count 使用 AtomicI32 但 COM 要求 ULONG | dll.rs:53, text_service.rs:199 |
+| P2-3 | 日志每次按键分配 String 热路径性能 | text_service.rs:614 |
+| P2-4 | lock_server 空实现 | dll.rs:149-151 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | output.rs 注释与实际 vtable 索引不一致 | output.rs:25-29 |
+| P3-2 | CLASS_E_NOAGREGATION 拼写错误（少一个 G） | dll.rs:17 |
+| P3-3 | 乱码注释（GBK 编码） | dll.rs:302-310 |
+| P3-4 | state.rs 字母→char 转换可读性差 | state.rs:217 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | 考虑使用 windows-rs crate 替代手写 FFI | 多处 |
+| P4-2 | hook.rs EATEN_DOWN 使用 Vec 可替换为 HashSet | hook.rs |
+| P4-3 | clipboard_paste 硬编码扫描码 | output.rs |
+
+### 修复计划
+
+#### P0 优先级
+- P0-1: ts_release 改用 CAS 循环（与 ks_release 一致）
+- P0-2: ITfThreadMgr::GetFocus vtable 从 index 9 改为 7
+- P0-3: ks_test_key_down/ks_key_down 添加 pf_eaten null 检查
+- P0-4: 创建真正的 EditSession COM 实例替代 static vtable 指针
+
+#### P1 优先级
+- P1-1: cf_release 改用 CAS 循环
+- P1-4: wbw_ime_create 改用 CStr::from_ptr
