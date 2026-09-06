@@ -218,7 +218,7 @@ pub struct NgramConfig {
 impl Default for NgramConfig {
     fn default() -> Self {
         Self {
-            order: 2,
+            order: 3,
             smooth: 0.1,
             model_path: None,
         }
@@ -282,7 +282,7 @@ impl Default for GlobalConfig {
     fn default() -> Self {
         Self {
             dict: DictConfig {
-                base_path: "resources/dicts/base.cin".to_string(),
+                base_path: "resources/dicts/pinyin.cin".to_string(),
                 ngram_path: Some("resources/dicts/ngram.bin".to_string()),
                 user_dict_path: None,
             },

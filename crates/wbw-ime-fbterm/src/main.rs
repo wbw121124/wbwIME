@@ -218,7 +218,7 @@ fn send_message(stream: &mut UnixStream, msg_type: MsgType, payload: &[u8]) -> s
     };
     let header_bytes = unsafe {
         std::slice::from_raw_parts(
-            &header as *const MsgHeader as *const u8,
+            std::ptr::addr_of!(header) as *const u8,
             std::mem::size_of::<MsgHeader>(),
         )
     };

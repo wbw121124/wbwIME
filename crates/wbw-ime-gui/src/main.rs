@@ -148,8 +148,10 @@ fn resolve_icon(value: &str) -> (slint::Image, String) {
         let path = std::env::temp_dir().join(format!("wbw-ime-{:x}-{:x}.svg", random, id));
         if std::fs::write(&path, t).is_ok() {
             if let Ok(img) = slint::Image::load_from_path(&path) {
+                let _ = std::fs::remove_file(&path);
                 return (img, String::new());
             }
+            let _ = std::fs::remove_file(&path);
         }
     }
     (slint::Image::default(), t.to_string())

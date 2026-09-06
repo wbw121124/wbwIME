@@ -404,7 +404,7 @@ unsafe fn convert_response(response: &ImeResponse, candidates: &[Candidate]) -> 
     Box::into_raw(Box::new(WbwImeResult {
         response_type,
         buffer: buffer.into_raw(),
-        cursor: (response.cursor as u32).min(response.buffer.chars().count() as u32),
+        cursor: response.cursor as u32,
         candidates: candidates_ptr,
         candidate_count,
         need_refresh: response.need_refresh,
