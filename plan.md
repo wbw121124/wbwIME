@@ -858,3 +858,35 @@ wbw-types:    0 passed (纯类型)
 **无 Critical/High 问题，代码可以发布。**
 
 所有 COM 接口均有 panic 防护；IPC 帧协议有 1MB 上限；整数转换有边界守卫；缓冲区长度在各路径均有限制；颜色解析有容错；SmoothMethod 类型系统正确；字典路径默认值统一。
+
+---
+
+## Round 7 深度审查（2026-09-04）
+
+### 代码问题
+
+| # | 严重性 | 问题 | 位置 |
+|---|--------|------|------|
+| R7-01 | High | packed struct UB（&header as *const _ 不安全） | fbterm/main.rs:219 |
+| R7-02 | High | cursor 截断（byte offset 与 char count 比较） | native/lib.rs:407 |
+| R7-03 | Medium | 临时 SVG 文件泄漏 | gui/main.rs:149-153 |
+
+### 文档问题
+
+| # | 严重性 | 问题 | 位置 |
+|---|--------|------|------|
+| D7-01 | High | NgramConfig.order 默认值 2 vs 配置值 3 | lib.rs:221 vs config.toml:35 |
+| D7-02 | High | DictConfig.base_path 默认值 base.cin vs pinyin.cin | lib.rs:285 vs config.toml:3 |
+| D7-03 | Medium | plan.md 修复统计表重复矛盾（40 vs 25） | plan.md:183-242 |
+
+### 修复计划
+
+#### High 优先级
+- R7-01: packed struct 使用 addr_of! 宏
+- R7-02: 移除 cursor 截断逻辑
+- D7-01: NgramConfig.order 默认值改为 3
+- D7-02: DictConfig.base_path 默认值改为 pinyin.cin
+
+#### Medium 优先级
+- R7-03: 临时 SVG 文件清理
+- D7-03: 清理 plan.md 重复统计表
