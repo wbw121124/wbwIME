@@ -142,7 +142,7 @@ unsafe extern "system" fn cf_create_instance(
         unsafe {
             *ppv = std::ptr::null_mut();
         }
-        E_NOTIMPL
+        E_NOINTERFACE // 0x80004002
     }))
     .unwrap_or(E_FAIL)
 }
@@ -370,17 +370,25 @@ fn get_dll_path() -> std::path::PathBuf {
         return std::path::PathBuf::new();
     }
     unsafe {
-        let mut buf = [0u16; 260];
-        let len = windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW(
-            hmod as _,
-            buf.as_mut_ptr(),
-            260,
-        );
-        if len > 0 {
-            std::path::PathBuf::from(String::from_utf16_lossy(&buf[..len as usize]))
-        } else {
-            std::path::PathBuf::new()
+        let mut buf = vec![0u16; 260];
+        let mut size = buf.len() as u32;
+        loop {
+            let len = windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW(
+                hmod as _,
+                buf.as_mut_ptr(),
+                size,
+            );
+            if len == 0 {
+                return std::path::PathBuf::new();
+            }
+            if len < size {
+                buf.truncate(len as usize);
+                break;
+            }
+            size *= 2;
+            buf.resize(size as usize, 0);
         }
+        std::path::PathBuf::from(String::from_utf16_lossy(&buf))
     }
 }
 

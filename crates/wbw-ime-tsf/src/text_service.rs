@@ -32,7 +32,12 @@ impl TsfContext {
     };
 }
 
+/// # Safety
+/// TsfContext 包含 *mut c_void 裸指针，仅在 TSF_CTX Mutex 保护下访问。
+/// 所有 COM 操作在 STA 线程上执行，跨线程访问由 Mutex 序列化。
 unsafe impl Send for TsfContext {}
+/// # Safety
+/// 同 Send 实现说明，所有访问由 TSF_CTX Mutex 序列化。
 unsafe impl Sync for TsfContext {}
 
 /// 一次性读取当前 TSF 上下文（thread_mgr, client_id）。
@@ -194,7 +199,12 @@ struct KeyEventSink {
     ref_count: AtomicI32,
 }
 
+/// # Safety
+/// KeyEventSink 仅通过 static 引用使用，ref_count 由 AtomicI32 管理。
+/// 所有 COM 回调由 TSF 在同一线程上调度，无跨线程可变访问。
 unsafe impl Send for KeyEventSink {}
+/// # Safety
+/// KeyEventSink 为 static 不可变对象，ref_count 为原子操作，COM 回调不涉及跨线程可变状态。
 unsafe impl Sync for KeyEventSink {}
 
 static KEY_EVENT_SINK: KeyEventSink = KeyEventSink {
@@ -243,7 +253,7 @@ unsafe extern "system" fn ks_release(this: *mut c_void) -> ULONG {
         let s = unsafe { &*(this as *const KeyEventSink) };
         s.ref_count.fetch_sub(1, Ordering::AcqRel) as ULONG - 1
     }))
-    .unwrap_or_default()
+    .unwrap_or(1)  // COM 规范要求 Release 返回 >= 0，返回 1 表示对象仍存活
 }
 
 // ========== TextService COM ==========
@@ -291,7 +301,14 @@ pub struct TextService {
     pub key_sink: *mut c_void,
 }
 
+/// # Safety
+/// TextService 包含 *mut c_void 裸指针（thread_mgr, key_sink），但实例由
+/// Box::into_raw 创建并通过引用计数管理生命周期。所有字段的访问都在
+/// COM Activate/Deactivate/按键回调的同一线程上下文中进行。
 unsafe impl Send for TextService {}
+/// # Safety
+/// TextService 仅通过 *mut c_void 传递给 TSF，由 COM 引用计数保护生命周期。
+/// 无跨线程并发访问场景。
 unsafe impl Sync for TextService {}
 
 impl TextService {
@@ -374,7 +391,7 @@ unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
         }
         count
     }))
-    .unwrap_or_default()
+    .unwrap_or(1)  // COM 规范要求 Release 返回 >= 0，返回 1 表示对象仍存活
 }
 
 // ========== ITfTextInputProcessorEx ==========
