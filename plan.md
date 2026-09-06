@@ -601,10 +601,10 @@ wbw-types:    0 passed (纯类型)
 7. **P2**: `candidate.rs:27` — `page_size=0` 时分页逻辑异常
 
 ### 修复状态
-- [ ] 编写修复方案
-- [ ] 执行修复
-- [ ] cargo test 验证
-- [ ] git commit + push
+- [x] 编写修复方案
+- [x] 执行修复
+- [x] cargo test 验证
+- [x] git commit + push
 
 ---
 
