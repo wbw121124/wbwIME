@@ -1015,3 +1015,57 @@ wbw-types:    0 passed (纯类型)
 **无 Critical/High 问题，代码可以发布。**
 
 所有 Round 1-9 修复已确认正确落地。代码库整体质量良好，所有 Critical/High 级别的安全、正确性、内存安全问题已修复。
+
+---
+
+## Round 11 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P0-1 | EditSession QI 缺少 AddRef，违反 COM 规范 | output.rs:99-121 |
+
+### P1 — High
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P1-1 | KeyEventSink 静态单例无法处理多客户端 advise | text_service.rs:200-203 |
+| P1-2 | ks_add_ref panic 返回 0，违反 COM 规范 | text_service.rs:234-238 |
+| P1-3 | push_char 缓冲区溢出回退逻辑错误（cursor 未更新就 drain） | context.rs:51-57 |
+| P1-4 | partial_cmp 隐藏 NaN 问题 | matcher.rs:196-200 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | TsfContext 持有裸指针无生命周期跟踪 | text_service.rs:22-33 |
+| P2-2 | DllRegisterServer 未回滚部分失败 | dll.rs:238-349 |
+| P2-3 | 多处 #[allow(dead_code)] 标注未使用代码 | 多处 |
+| P2-4 | history() 返回 &VecDeque 而非 &[T] | context.rs:152 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | 缺少文档注释的公共类型/方法 | 多处 |
+| P3-2 | 命名不符合 Rust 惯例（clear vs reset） | fst_dict.rs:388 |
+| P3-3 | 重复的 Config 结构体 | types 模块 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | fuzzy_lookup 性能瓶颈（全表扫描） | fst_dict.rs:202 |
+| P4-2 | 缓存策略可优化（前缀树缓存） | matcher.rs:46 |
+| P4-3 | 错误处理不一致（thiserror vs 自定义） | 多处 |
+
+### 修复计划
+
+#### P0 优先级
+- P0-1: EditSession QI 添加 AddRef
+
+#### P1 优先级
+- P1-2: ks_add_ref panic 返回 1
+- P1-3: push_char 修正回退逻辑
+- P1-4: partial_cmp 改为 total_cmp
