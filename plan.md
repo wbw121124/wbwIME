@@ -1398,3 +1398,52 @@ wbw-types:    0 passed (纯类型)
 - P0-1: ITfThreadMgr::GetFocus vtable 从 index 7 改为 5
 - P0-2: cf_release 添加 fetch_sub + prev==1 检查
 - P0-3: plan.md 统计数据再次统一
+
+---
+
+## Round 19 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P0-1 | 无新发现 P0 问题 | - |
+
+### P1 — High
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P1-1 | README 配置文件路径描述与实际代码不一致 | README.md:71 |
+| P1-2 | plan.md Round 8 修复状态未勾选 | plan.md:603-608 |
+| P1-3 | plan.md Round 3 修复状态未勾选 | plan.md:355-358 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | plan.md 多处"终审"章节互相矛盾 | plan.md:434,550 |
+| P2-2 | plan.md 修复统计表重复出现 | plan.md:72-87,183-190,235-242 |
+| P2-3 | README 缺少安装路径说明 | README.md |
+| P2-4 | config.toml ngram model_path 缺少安装路径配置 | config.toml:39 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | plan.md Round 1-12 修复统计重复 | plan.md:449-462,566-580 |
+| P3-2 | README 缺少故障排除/FAQ 段落 | README.md |
+| P3-3 | README 缺少 wbw-cli 用法示例 | README.md:15 |
+| P3-4 | config.toml 缺少字典路径安装后位置说明 | config.toml:1-8 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | plan.md emoji 图标混用 | plan.md 多处 |
+| P4-2 | plan.md 缺少 Round 14-17 详细修复内容 | plan.md |
+| P4-3 | README 依赖关系图缺少 wbw-ime-fbterm | README.md:44-54 |
+
+### 修复计划
+
+#### P1 优先级
+- P1-2/P1-3: 勾选 plan.md 中已修复的待办事项
