@@ -1216,3 +1216,56 @@ wbw-types:    0 passed (纯类型)
 #### P1 优先级
 - P1-1: ks_release ref_count 下溢返回 0
 - P1-2: ClassFactory 使用 compare_exchange
+
+---
+
+## Round 15 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P0-1 | ks_release 引用计数竞争导致下溢/UAF | text_service.rs:251-264 |
+| P0-2 | ts_release compare_exchange 竞争导致 UAF | text_service.rs:389-404 |
+| P0-3 | COM QueryInterface 返回不同指针违反对称性 | text_service.rs:361-368 |
+| P0-4 | plan.md 统计数据三重矛盾（40/25/78+） | plan.md |
+
+### P1 — High
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P1-1 | clipboard_paste SendInput 在锁外执行 | output.rs:441-470 |
+| P1-2 | config.toml model_path 与 dict.ngram_path 重复 | config.toml |
+| P1-3 | GUI config 与 TOML 配置完全脱节无文档 | README.md |
+| P1-4 | plan.md Round 8 待办事项未勾选 | plan.md:646-649 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | plan.md 多个"终审"章节互相矛盾 | plan.md |
+| P2-2 | 大量 unsafe transmute 缺少类型安全包装 | 多处 |
+| P2-3 | lib.rs 全局 #![allow(dead_code)] | lib.rs:1 |
+| P2-4 | log.rs 日志文件无限增长无轮转 | log.rs |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | 注释包含乱码字符 | dll.rs:302, text_service.rs:416 |
+| P3-2 | lp_vtbl 命名不符合 Rust 惯例 | dll.rs:52 |
+| P3-3 | 缺少 #[must_use] 标注 | 多处 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | DllRegisterServer 需管理员权限 | dll.rs |
+| P4-2 | 缺少故障排除/FAQ 段落 | README.md |
+| P4-3 | fuzzy_lookup 全表扫描性能 | fst_dict.rs:202 |
+
+### 修复计划
+
+#### P0 优先级
+- P0-1: ks_release 使用 compare_exchange 循环
+- P0-2: ts_release 使用 fetch_sub + 检查 prev == 1
