@@ -404,7 +404,8 @@ fn hook_paste(text: &str) {
             }
         }
         CloseClipboard();
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        // 与 output.rs::clipboard_paste 同理：等待 OS 传播剪贴板数据到目标窗口。
+        std::thread::sleep(std::time::Duration::from_millis(150));
         let make_key = |vk: u16, scan: u16, flags: u32| INPUT {
             r#type: 1,
             Anonymous: INPUT_0 {

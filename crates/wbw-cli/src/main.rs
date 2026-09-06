@@ -164,7 +164,7 @@ fn show_help() {
     println!("  version                         显示版本信息");
     println!("  help                            显示帮助信息");
     println!();
-    println!("默认词典: resources/dicts/cs-oi.cin");
+    println!("默认词典: resources/dicts/pinyin.cin");
 }
 
 /// 显示版本信息
@@ -199,7 +199,7 @@ fn load_config() -> GlobalConfig {
 
 /// 默认词典路径（若命令行未指定）
 fn default_dict_path() -> PathBuf {
-    PathBuf::from("resources/dicts/cs-oi.cin")
+    PathBuf::from("resources/dicts/pinyin.cin")
 }
 
 /// 从 .cin 或 .fst 文件加载词典和模糊规则

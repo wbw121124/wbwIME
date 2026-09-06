@@ -213,6 +213,13 @@ pub struct NgramConfig {
     pub smooth: f64,
     /// 模型文件路径
     pub model_path: Option<String>,
+    /// 平滑方法
+    #[serde(default = "default_smooth_method")]
+    pub smooth_method: String,
+}
+
+fn default_smooth_method() -> String {
+    "laplace".to_string()
 }
 
 impl Default for NgramConfig {
@@ -221,6 +228,7 @@ impl Default for NgramConfig {
             order: 3,
             smooth: 0.1,
             model_path: None,
+            smooth_method: default_smooth_method(),
         }
     }
 }

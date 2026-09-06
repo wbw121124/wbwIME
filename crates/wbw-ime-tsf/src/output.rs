@@ -8,6 +8,10 @@ pub type ULONG = u32;
 
 pub const S_OK: HRESULT = 0;
 
+/// IUnknown vtable indices.
+const VTABLE_QI: usize = 0;
+const VTABLE_RELEASE: usize = 2;
+
 /// 屏幕坐标矩形（与 Win32 `RECT` 布局一致）。
 #[repr(C)]
 struct RECT {
@@ -41,7 +45,7 @@ unsafe fn get_context(thread_mgr: *mut c_void) -> Option<*mut c_void> {
     let hr = get_top_fn(doc_mgr, &mut context);
     {
         let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
-            std::mem::transmute(*dm_vtable.add(2));
+            std::mem::transmute(*dm_vtable.add(VTABLE_RELEASE));
         release_fn(doc_mgr);
     }
     if hr != S_OK || context.is_null() {
@@ -56,14 +60,14 @@ unsafe fn release_obj(obj: *mut c_void) {
     }
     let vtable = *(obj as *const *const usize);
     let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
-        std::mem::transmute(*vtable.add(2));
+        std::mem::transmute(*vtable.add(VTABLE_RELEASE));
     release_fn(obj);
 }
 
 unsafe fn qi(obj: *mut c_void, iid: &Guid) -> Option<*mut c_void> {
     let vtable = *(obj as *const *const usize);
     let qi_fn: unsafe extern "system" fn(*mut c_void, *const Guid, *mut *mut c_void) -> HRESULT =
-        std::mem::transmute(*vtable.add(0));
+        std::mem::transmute(*vtable.add(VTABLE_QI));
     let mut result: *mut c_void = std::ptr::null_mut();
     let hr = qi_fn(obj, iid, &mut result);
     if hr == S_OK && !result.is_null() {
@@ -453,8 +457,10 @@ pub fn clipboard_paste(text: &str) {
         CloseClipboard();
     }
     drop(_guard);  // 提前释放锁
-    // 锁在此处释放，之后做 sleep + SendInput
-    std::thread::sleep(std::time::Duration::from_millis(50));
+    // 等待 OS 将 SetClipboardData 的结果传播到目标窗口。
+    // 150ms 在绝大多数场景下足够；极慢系统上仍有微小概率丢失粘贴，
+    // 但无法在无窗口句柄的情况下使用 AddClipboardFormatListener 做精确等待。
+    std::thread::sleep(std::time::Duration::from_millis(150));
 
     unsafe {
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::{

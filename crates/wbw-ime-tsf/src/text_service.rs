@@ -10,6 +10,11 @@ use crate::output::{HRESULT, S_OK, ULONG};
 const E_FAIL: HRESULT = -2147467259;
 const E_INVALIDARG: HRESULT = -2147024809;
 
+/// IUnknown vtable indices (all COM interfaces start with these 3).
+const VTABLE_QI: usize = 0;
+const VTABLE_ADDREF: usize = 1;
+const VTABLE_RELEASE: usize = 2;
+
 pub static IME_STATE: std::sync::Mutex<Option<crate::state::ImeState>> =
     std::sync::Mutex::new(None);
 
@@ -44,14 +49,20 @@ unsafe impl Sync for TsfContext {}
 /// 一次性读取当前 TSF 上下文（thread_mgr, client_id）。
 ///
 /// 保证返回值内部一致：要么都是激活态，要么都是清空态。
+///
+/// # Safety Invariant
+///
+/// 返回的 `thread_mgr` 指针是**借用指针**，仅在当前 TSF 回调作用域内有效。
+/// TSF 保证同一 COM apartment 上的回调串行执行，因此在 `ks_key_down` / `ks_test_key_down`
+/// 等回调期间，`ts_deactivate` 不会在另一线程释放该指针。
+/// 调用方不得跨回调边界持有此指针，也不得在回调外使用。
 pub fn current_tsf_ctx() -> (*mut c_void, u32) {
     let ctx = TSF_CTX.lock().unwrap_or_else(|e| e.into_inner());
     (ctx.thread_mgr, ctx.client_id)
 }
 
-/// 字典加载是否已尝试过（保证只初始化一次，且避免在 DllMain 的加载器锁下做重工作）。
-static STATE_INITIALIZED: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+/// 字典加载保护锁（保证只初始化一次，且避免在 DllMain 的加载器锁下做重工作）。
+static STATE_INIT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// 当前活跃的 TextService 实例数（供 DllCanUnloadNow 判断）。
 pub static TEXT_SERVICE_COUNT: std::sync::atomic::AtomicI32 =
@@ -63,18 +74,18 @@ pub static TEXT_SERVICE_COUNT: std::sync::atomic::AtomicI32 =
 /// 容易导致 regsvr32 及真实应用的崩溃/死锁——典型表现为 0xC000013A），
 /// 改为在首次按键处理时懒加载。
 pub fn ensure_state_loaded() {
-    // 修改原因：原实现硬编码从 %USERPROFILE%\AppData\Roaming\wbwIME\dict.fst 加载，
-    // 但安装脚本实际将字典（base.cin / 拼音码表）放到 %LOCALAPPDATA%\wbwIME\dicts\，
-    // 导致 IME_STATE 永远为 None、TSF 不处理按键、GUI 不启动。
-    // 改为多候选路径依次尝试，并将 STATE_INITIALIZED 改为仅在成功时置 true，
-    // 允许失败后下次按键时重试。
-
-    // 已成功加载过，直接返回
+    // 快速路径：已加载成功，直接返回
     if IME_STATE.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
         return;
     }
-    // 仍在加载中（另一个线程正在尝试），也直接返回，避免并发重复 IO
-    if STATE_INITIALIZED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+    // 慢路径：用 Mutex 序列化加载，避免并发重复 IO
+    let _guard = match STATE_INIT_LOCK.lock() {
+        Ok(g) => g,
+        Err(_) => return, // poisoned → 上一次加载 panic 了，静默放弃
+    };
+
+    // 拿到锁后再次检查（double-check locking）
+    if IME_STATE.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
         return;
     }
 
@@ -109,8 +120,7 @@ pub fn ensure_state_loaded() {
     }
 
     crate::log::log("ensure_state_loaded: no dict found");
-    // 全部失败：重置 STATE_INITIALIZED，允许下次按键时重试
-    STATE_INITIALIZED.store(false, std::sync::atomic::Ordering::SeqCst);
+    // 失败后 _guard drop 释放锁，下次按键会重试
 }
 
 // ========== ITfKeystrokeMgr vtable helpers ==========
@@ -254,12 +264,15 @@ unsafe extern "system" fn ks_add_ref(this: *mut c_void) -> ULONG {
 
 unsafe extern "system" fn ks_release(this: *mut c_void) -> ULONG {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = this; // static object, never freed
         let s = unsafe { &*(this as *const KeyEventSink) };
         loop {
             let prev = s.ref_count.load(Ordering::Acquire);
             if prev <= 1 {
-                s.ref_count.store(0, Ordering::Release);
-                return 0;
+                if s.ref_count.compare_exchange(1, 0, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
+                    return 0;
+                }
+                continue;
             }
             if s.ref_count.compare_exchange(prev, prev - 1, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
                 return (prev - 1) as ULONG;
@@ -401,12 +414,12 @@ unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
         loop {
             let prev = ts.ref_count.load(Ordering::Acquire);
             if prev <= 1 {
-                ts.ref_count.store(0, Ordering::Release);
-                TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
-                unsafe {
-                    let _ = Box::from_raw(this as *mut TextService);
+                if ts.ref_count.compare_exchange(1, 0, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
+                    TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
+                    unsafe { drop(Box::from_raw(this as *mut TextService)); }
+                    return 0;
                 }
-                return 0;
+                continue;
             }
             if ts.ref_count.compare_exchange(prev, prev - 1, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
                 return (prev - 1) as ULONG;
@@ -472,7 +485,7 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
         if thread_mgr.is_null() {
             thread_mgr = punk;
             let add_ref_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
-                std::mem::transmute(*(*(punk as *const *const usize)).add(1));
+                std::mem::transmute(*(*(punk as *const *const usize)).add(VTABLE_ADDREF));
             add_ref_fn(punk);
         }
     }
@@ -515,7 +528,7 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
 
     unsafe {
         let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
-            std::mem::transmute(*(*(keystroke_mgr as *const *const usize)).add(2));
+            std::mem::transmute(*(*(keystroke_mgr as *const *const usize)).add(VTABLE_RELEASE));
         release_fn(keystroke_mgr);
     }
 
@@ -523,7 +536,7 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
         unsafe {
             *TSF_CTX.lock().unwrap_or_else(|e| e.into_inner()) = TsfContext::EMPTY;
             let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
-                std::mem::transmute(*(*(thread_mgr as *const *const usize)).add(2));
+                std::mem::transmute(*(*(thread_mgr as *const *const usize)).add(VTABLE_RELEASE));
             release_fn(thread_mgr);
             ts.thread_mgr = std::ptr::null_mut();
         }
@@ -563,14 +576,14 @@ unsafe extern "system" fn ts_deactivate(this: *mut c_void) -> HRESULT {
             }
             unsafe {
                 let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
-                    std::mem::transmute(*(*(keystroke_mgr as *const *const usize)).add(2));
+                    std::mem::transmute(*(*(keystroke_mgr as *const *const usize)).add(VTABLE_RELEASE));
                 release_fn(keystroke_mgr);
             }
         }
 
         unsafe {
             let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
-                std::mem::transmute(*(*(ts.thread_mgr as *const *const usize)).add(2));
+                std::mem::transmute(*(*(ts.thread_mgr as *const *const usize)).add(VTABLE_RELEASE));
             release_fn(ts.thread_mgr);
         }
         ts.thread_mgr = std::ptr::null_mut();

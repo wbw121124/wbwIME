@@ -68,7 +68,10 @@ fn ensure_connected() -> bool {
                     cmd.arg(cfg.to_string_lossy().to_string());
                 }
             }
-            let _ = cmd.spawn();
+            match cmd.spawn() {
+                Ok(_) => {}
+                Err(e) => crate::log::log(&format!("ensure_connected: spawn GUI failed: {e}")),
+            }
         }
     }
 

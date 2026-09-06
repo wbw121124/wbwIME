@@ -100,9 +100,13 @@ unsafe extern "system" fn cf_release(this: *mut c_void) -> ULONG {
         loop {
             let prev = f.ref_count.load(Ordering::Acquire);
             if prev <= 1 {
-                f.ref_count.store(0, Ordering::Release);
-                unsafe { let _ = Box::from_raw(this as *mut ClassFactory); }
-                return 0;
+                // CAS 1→0: only the thread that succeeds frees the object
+                if f.ref_count.compare_exchange(1, 0, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
+                    unsafe { drop(Box::from_raw(this as *mut ClassFactory)); }
+                    return 0;
+                }
+                // CAS failed → another thread modified ref_count, retry
+                continue;
             }
             if f.ref_count.compare_exchange(prev, prev - 1, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
                 return (prev - 1) as ULONG;
@@ -190,11 +194,11 @@ pub unsafe extern "system" fn DllMain(
 #[no_mangle]
 pub unsafe extern "system" fn DllGetClassObject(
     rclsid: *const Guid,
-    _riid: *const Guid,
+    riid: *const Guid,
     ppv: *mut *mut c_void,
 ) -> HRESULT {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        if rclsid.is_null() || ppv.is_null() || _riid.is_null() {
+        if rclsid.is_null() || ppv.is_null() || riid.is_null() {
             return E_INVALIDARG;
         }
         let clsid = unsafe { &*rclsid };
@@ -204,7 +208,7 @@ pub unsafe extern "system" fn DllGetClassObject(
             }
             return CLASS_E_CLASSNOTAVAILABLE;
         }
-        let iid = unsafe { &*_riid };
+        let iid = unsafe { &*riid };
         let factory = Box::into_raw(Box::new(ClassFactory {
             lp_vtbl: &CLASS_FACTORY_VTABLE,
             ref_count: AtomicI32::new(1),
