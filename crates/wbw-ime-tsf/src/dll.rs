@@ -13,6 +13,8 @@ const E_NOTIMPL: HRESULT = -2147467263;
 const CLASS_E_CLASSNOTAVAILABLE: HRESULT = -2147221231;
 const E_UNEXPECTED: HRESULT = -2147418113;
 const E_FAIL: HRESULT = -2147467259;
+const E_NOINTERFACE: HRESULT = -2147467262;
+const CLASS_E_NOAGREGATION: HRESULT = -2147221232;
 const S_FALSE: HRESULT = 1;
 
 const DLL_PROCESS_ATTACH: u32 = 1;
@@ -112,6 +114,9 @@ unsafe extern "system" fn cf_create_instance(
     ppv: *mut *mut c_void,
 ) -> HRESULT {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if !_outer.is_null() {
+            return CLASS_E_NOAGREGATION;
+        }
         if ppv.is_null() {
             return E_INVALIDARG;
         }
@@ -193,10 +198,18 @@ pub unsafe extern "system" fn DllGetClassObject(
             }
             return CLASS_E_CLASSNOTAVAILABLE;
         }
+        let iid = unsafe { &*_riid };
         let factory = Box::into_raw(Box::new(ClassFactory {
             lp_vtbl: &CLASS_FACTORY_VTABLE,
             ref_count: AtomicI32::new(1),
         }));
+        if *iid != IID_IUNKNOWN && *iid != IID_ICLASSFACTORY {
+            unsafe {
+                let _ = Box::from_raw(factory);
+                *ppv = std::ptr::null_mut();
+            }
+            return E_NOINTERFACE;
+        }
         unsafe {
             *ppv = factory as *mut c_void;
         }

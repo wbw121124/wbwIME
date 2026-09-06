@@ -106,7 +106,7 @@ unsafe extern "system" fn es_qi(
             return -2147024809;
         }
         let iid = unsafe { &*riid };
-        if *iid == IID_IUNKNOWN {
+        if *iid == IID_IUNKNOWN || *iid == IID_ITF_EDIT_SESSION {
             unsafe {
                 *ppv = _this;
             }

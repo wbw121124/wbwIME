@@ -121,9 +121,9 @@ pub unsafe fn advise_key_sink(
     focus: i32,
 ) -> HRESULT {
     let vtable = unsafe { *(mgr_ptr as *const *const usize) };
-    // ITfKeystrokeMgr: 0=QI 1=AddRef 2=Release 3=SetFocus 4=AdviseKeyEventSink 5=Unadvise...
+    // ITfKeystrokeMgr: 0=QI 1=AddRef 2=Release 3=AdviseKeyEventSink 4=UnadviseKeyEventSink
     let advise_fn: unsafe extern "system" fn(*mut c_void, u32, *mut c_void, i32) -> HRESULT =
-        unsafe { std::mem::transmute(*vtable.add(4)) };
+        unsafe { std::mem::transmute(*vtable.add(3)) };
     unsafe { advise_fn(mgr_ptr, tid, sink, focus) }
 }
 
@@ -134,7 +134,7 @@ pub unsafe fn advise_key_sink(
 pub unsafe fn unadvise_key_sink(mgr_ptr: *mut c_void, tid: u32) -> HRESULT {
     let vtable = unsafe { *(mgr_ptr as *const *const usize) };
     let unadvise_fn: unsafe extern "system" fn(*mut c_void, u32) -> HRESULT =
-        unsafe { std::mem::transmute(*vtable.add(5)) };
+        unsafe { std::mem::transmute(*vtable.add(4)) };
     unsafe { unadvise_fn(mgr_ptr, tid) }
 }
 
