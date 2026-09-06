@@ -1496,3 +1496,42 @@ wbw-types:    0 passed (纯类型)
 
 #### P0 优先级
 - P0-3: 统一 plan.md 测试统计数据为 159
+
+---
+
+## Round 21 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | plan.md 结构严重膨胀无法判断真实状态 | plan.md | 待清理 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | smooth_method 字段 NgramConfig 无此字段 | config.toml:38 vs lib.rs:209-216 | 待修复 |
+| P1-2 | CLI 帮助默认词典与 config.toml 不一致 | main.rs:167 vs config.toml:3 | 待修复 |
+| P1-3 | plan.md "终审" 结论自相矛盾 | plan.md 多处 | 待清理 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | user_dict_path 代码默认 None vs config.toml "user.txt" | lib.rs:284 vs config.toml:7 |
+| P2-2 | README 配置示例缺少 smooth_method | README.md:96-97 |
+| P2-3 | NgramConfig.model_path 默认值 None vs config.toml | lib.rs:220 vs config.toml:40 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | README 无故障排除/FAQ | README.md |
+| P3-2 | config.toml smooth_method 无注释说明可选值 | config.toml:38 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | README 缺少 l0 section 配置说明 | README.md:90-98 |
