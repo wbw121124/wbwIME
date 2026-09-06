@@ -1776,3 +1776,51 @@ wbw-types:    0 passed (纯类型)
 | # | 问题 | 位置 |
 |---|------|------|
 | P4-1 | README 缺少开发环境搭建说明 | README.md |
+
+---
+
+## Round 27 P0-P4 全级别审查（2026-09-06）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | COM Release CAS 无限循环已修复 | dll.rs, text_service.rs | ✅ 已修复 |
+| P0-2 | HOOK_THREAD_ID Mutex 在 hook 回调中（Round 25 P1-3） | hook.rs | ✅ 已改为 AtomicBool |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | ts_add_ref panic 返回 1 已修复 | text_service.rs:408 | ✅ 已修复 |
+| P1-2 | cf_release CAS 循环 prev<=0 保护已修复 | dll.rs:97-112 | ✅ 已修复 |
+| P1-3 | ts_activate 错误路径 thread_mgr 释放配平已修复 | text_service.rs:538-546 | ✅ 已修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | plan.md 文档结构严重混乱（1778行） | plan.md |
+| P2-2 | plan.md 测试数据过时（matcher 36 vs 实际 38） | plan.md:196 |
+| P2-3 | plan.md 待办事项勾选不一致 | plan.md:279,308 |
+| P2-4 | README 缺少 smooth_method 可选值说明 | README.md:96-98 |
+| P2-5 | README 依赖关系图缺少 crate | README.md:44-54 |
+| P2-6 | clipboard_paste/hook_paste 代码重复 | output.rs, main.rs |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | README 缺少故障排除/FAQ | README.md |
+| P3-2 | README 缺少 wbw-cli 用法示例 | README.md:15 |
+| P3-3 | README 缺少安装路径说明 | README.md |
+| P3-4 | README 未提及 LICENSE 文件位置 | README.md:146 |
+| P3-5 | config.toml 缺少安装后路径说明 | config.toml:1-8 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | README 缺少开发环境搭建说明 | README.md |
+| P4-2 | plan.md 缺少 Round 14-17 修复摘要 | plan.md |
+| P4-3 | config.toml smooth_method 注释可更详细 | config.toml:38 |
