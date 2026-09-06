@@ -1330,3 +1330,59 @@ wbw-types:    0 passed (纯类型)
 #### P1 优先级
 - P1-1: cf_release 改用 CAS 循环
 - P1-4: wbw_ime_create 改用 CStr::from_ptr
+
+---
+
+## Round 17 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P0-1 | DllMain loader lock 内调用 log::log() 做文件 I/O | dll.rs DllMain |
+| P0-2 | ITfThreadMgr vtable 偏移可能仍错误（7 可能不是 GetFocus） | output.rs:32 |
+| P0-3 | plan.md 统计数据三重矛盾（40/25/78+） | plan.md |
+
+### P1 — High
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P1-1 | TsfContext Send+Sync 但含 *mut c_void 可能跨线程访问 STA COM | text_service.rs |
+| P1-2 | Mutex poison 后 into_inner() 传播不一致状态 | text_service.rs |
+| P1-3 | IPC 帧读取端未检查 MAX_FRAME_SIZE | ipc.rs |
+| P1-4 | fxhash::hash(word) as u32 截断碰撞 | l0_learn.rs:221 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | IME_STATE 静态全局状态使单元测试无法隔离 | text_service.rs |
+| P2-2 | FxHashMap 无容量上限长期运行内存泄漏 | ranker.rs:29 |
+| P2-3 | ImeError 未实现 std::error::Error | error.rs |
+| P2-4 | HWND FFI 未检查返回值 | candidate_window.rs |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | Session struct 无 doc comment | session.rs |
+| P3-2 | L0Strategy 有 #[allow(dead_code)] | l0_learn.rs:353 |
+| P3-3 | WeightError 有 #[allow(dead_code)] | weight.rs:8 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | 建议用 windows crate 替代手动 transmute | 多处 |
+| P4-2 | 建议 DllMain 仅设 AtomicBool 延迟初始化 | dll.rs |
+| P4-3 | 建议 LruCache 替代无界 FxHashMap | ranker.rs |
+
+### 修复计划
+
+#### P0 优先级
+- P0-1: DllMain 中延迟日志初始化到首次 Activate
+- P0-3: 清理 plan.md 重复统计数据
+
+#### P1 优先级
+- P1-3: IPC 帧读取端添加 MAX_FRAME_SIZE 检查
+- P1-4: fxhash 改用 hash64
