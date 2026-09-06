@@ -97,12 +97,16 @@ unsafe extern "system" fn cf_add_ref(this: *mut c_void) -> ULONG {
 unsafe extern "system" fn cf_release(this: *mut c_void) -> ULONG {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let f = unsafe { &*(this as *const ClassFactory) };
-        let prev = f.ref_count.fetch_sub(1, Ordering::AcqRel);
-        if prev == 1 {
-            unsafe { let _ = Box::from_raw(this as *mut ClassFactory); }
-            0
-        } else {
-            (prev - 1) as ULONG
+        loop {
+            let prev = f.ref_count.load(Ordering::Acquire);
+            if prev <= 1 {
+                f.ref_count.store(0, Ordering::Release);
+                unsafe { let _ = Box::from_raw(this as *mut ClassFactory); }
+                return 0;
+            }
+            if f.ref_count.compare_exchange(prev, prev - 1, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
+                return (prev - 1) as ULONG;
+            }
         }
     }))
     .unwrap_or(0)
@@ -190,7 +194,7 @@ pub unsafe extern "system" fn DllGetClassObject(
     ppv: *mut *mut c_void,
 ) -> HRESULT {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        if rclsid.is_null() || ppv.is_null() {
+        if rclsid.is_null() || ppv.is_null() || _riid.is_null() {
             return E_INVALIDARG;
         }
         let clsid = unsafe { &*rclsid };

@@ -222,6 +222,9 @@ unsafe extern "system" fn ks_qi(
         if ppv.is_null() {
             return -2147024809;
         }
+        if riid.is_null() {
+            return -2147024809;
+        }
         let iid = unsafe { &*riid };
         if *iid == IID_IUNKNOWN || *iid == IID_ITF_KEY_EVENT_SINK {
             unsafe {
@@ -345,6 +348,9 @@ unsafe extern "system" fn ts_qi(
         if ppv.is_null() {
             return -2147024809;
         }
+        if riid.is_null() {
+            return E_INVALIDARG;
+        }
         let iid = unsafe { &*riid };
         crate::log::log(&format!(
             "ts_qi riid={:08X}-{:04X}-{:04X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
@@ -392,15 +398,19 @@ pub(crate) unsafe extern "system" fn ts_add_ref(this: *mut c_void) -> ULONG {
 unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let ts = unsafe { &*(this as *const TextService) };
-        let prev = ts.ref_count.fetch_sub(1, Ordering::AcqRel);
-        if prev == 1 {
-            TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
-            unsafe {
-                let _ = Box::from_raw(this as *mut TextService);
+        loop {
+            let prev = ts.ref_count.load(Ordering::Acquire);
+            if prev <= 1 {
+                ts.ref_count.store(0, Ordering::Release);
+                TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
+                unsafe {
+                    let _ = Box::from_raw(this as *mut TextService);
+                }
+                return 0;
             }
-            0
-        } else {
-            (prev - 1) as ULONG
+            if ts.ref_count.compare_exchange(prev, prev - 1, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
+                return (prev - 1) as ULONG;
+            }
         }
     }))
     .unwrap_or(1)  // COM 规范要求 Release 返回 >= 0，返回 1 表示对象仍存活

@@ -83,8 +83,8 @@ struct TSF_SELECTION {
 
 const TF_DEFAULT_SELECTION: u32 = u32::MAX;
 const TF_ES_SYNC: u32 = 0x0000_0002;
-const TF_ES_READ: u32 = 0x0000_0004;
-const TF_ES_WRITE: u32 = 0x0000_0008;
+const TF_ES_READ: u32 = 0x0004;
+const TF_ES_READWRITE: u32 = 0x0010;
 
 // 同步会话里备用的活动上下文指针（由 `get_caret_screen_coords` 在发请求前写入）。
 thread_local! {
@@ -396,7 +396,7 @@ pub unsafe fn insert_text_at_caret(thread_mgr: *mut c_void, text: &str) -> bool 
             context,
             client_id,
             sink,
-            TF_ES_SYNC | TF_ES_READ | TF_ES_WRITE,
+            TF_ES_SYNC | TF_ES_READWRITE,
             &mut _edit_cookie,
         );
 

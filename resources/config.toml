@@ -35,5 +35,6 @@ snapshot_path = "wbw_l0.json"
 order = 3
 # 平滑算法
 smooth = 0.1
+smooth_method = "laplace"
 # N-gram 模型文件
 model_path = "resources/dicts/ngram.bin"

@@ -201,7 +201,7 @@ wbw-imekit:  16 passed ✅
 wbw-ime-ipc:  4 passed ✅
 wbw-types:    0 passed (纯类型)
 ─────────────────────────────
-总计:       125 passed ✅
+总计:       159 passed ✅
 ```
 
 ### 关键修复内容
@@ -779,7 +779,7 @@ wbw-types:    0 passed (纯类型)
 
 | # | 严重性 | 问题 | 位置 |
 |---|--------|------|------|
-| D5-01 | Medium | plan.md 测试结果与实际不符（125 vs 159） | plan.md |
+| D5-01 | Medium | plan.md 测试结果与实际不符（已统一为159） | plan.md |
 | D5-02 | Low | plan.md 重复内容需精简 | plan.md |
 
 ### 修复计划
