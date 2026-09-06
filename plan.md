@@ -1583,3 +1583,51 @@ wbw-types:    0 passed (纯类型)
 
 #### P1 优先级
 - P1-2: README 添加 smooth_method 配置示例
+
+---
+
+## Round 23 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P0-1 | TSF_SELECTION 结构体大小/对齐可能不正确（栈缓冲区溢出） | output.rs:82-86 |
+| P0-2 | ks_release/ts_release panic 后资源泄漏 + DLL 无法卸载 | text_service.rs:282,429 |
+
+### P1 — High
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P1-1 | README 缺少安装路径说明 | README.md |
+| P1-2 | config.toml smooth_method 缺少可选值注释 | config.toml:38 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | plan.md 文档严重膨胀（1585行） | plan.md |
+| P2-2 | plan.md 待办事项未勾选 | plan.md:279,308 |
+| P2-3 | README 缺少故障排除/FAQ | README.md |
+| P2-4 | README 缺少 wbw-cli 用法示例 | README.md:15 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | README 依赖图缺少 wbw-ime-fbterm | README.md:44-54 |
+| P3-2 | README 未提及 LICENSE 文件位置 | README.md:145-147 |
+| P3-3 | config.toml 缺少安装后路径说明 | config.toml:1-8 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | plan.md emoji 图标混用 | plan.md 多处 |
+| P4-2 | plan.md 缺少 Round 14-17 修复摘要 | plan.md |
+
+### 修复计划
+
+#### P0 优先级
+- P0-1: 修正 TSF_SELECTION 结构体大小
+- P0-2: ks_release/ts_release panic 返回值改为安全值
