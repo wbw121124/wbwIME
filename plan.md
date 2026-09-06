@@ -1163,3 +1163,56 @@ wbw-types:    0 passed (纯类型)
 #### P3 优先级
 - P3-1: GlobalAlloc 使用 GMEM_MOVEABLE 常量
 - P3-2: get_dll_path 使用循环增长缓冲区
+
+---
+
+## Round 14 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P0-1 | ts_release 潜在 Use-After-Free（fetch_sub 后无同步屏障） | text_service.rs:382-395 |
+| P0-2 | plan.md 统计数据三重矛盾（40/25/25） | plan.md:72-87,183-190,235-242 |
+
+### P1 — High
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P1-1 | ks_release ref_count 下溢返回 u32::MAX | text_service.rs:251-257 |
+| P1-2 | ClassFactory 引用计数下溢未处理 | dll.rs:96-108 |
+| P1-3 | clipboard_paste sleep 50ms 窗口期竞态 | output.rs:407-471 |
+| P1-4 | plan.md 审查结论自相矛盾 | plan.md:477-480,592-595 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | IPC 帧协议缺少校验和 | lib.rs:46-108 |
+| P2-2 | TextService::new 未处理分配失败 | text_service.rs:315-324 |
+| P2-3 | hook.rs EATEN_DOWN 锁在热路径 | hook.rs:129,138,156,167 |
+| P2-4 | ensure_state_loaded 每次按键重试 IO | text_service.rs:64-113 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | 缺少模块级文档 | state.rs, output.rs |
+| P3-2 | 冗余 unsafe impl Send/Sync 安全论证不严谨 | text_service.rs |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | 应使用 windows-rs 替代手动 vtable 调用 | 多处 |
+| P4-2 | 剪贴板模拟 Ctrl+V 方案脆弱 | output.rs:407-471 |
+| P4-3 | fuzzy_lookup 全表扫描性能 | fst_dict.rs:202 |
+
+### 修复计划
+
+#### P0 优先级
+- P0-1: ts_release 使用 compare_exchange 替代 fetch_sub
+
+#### P1 优先级
+- P1-1: ks_release ref_count 下溢返回 0
+- P1-2: ClassFactory 使用 compare_exchange
