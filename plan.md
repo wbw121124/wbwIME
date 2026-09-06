@@ -1447,3 +1447,52 @@ wbw-types:    0 passed (纯类型)
 
 #### P1 优先级
 - P1-2/P1-3: 勾选 plan.md 中已修复的待办事项
+
+---
+
+## Round 20 P0-P4 全级别审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | ts_release/cf_release CAS 竞态（子代理已修复） | text_service.rs, dll.rs | ✅ 已修复 |
+| P0-2 | TF_ES_READWRITE 值错误（子代理已修复） | output.rs:84-87 | ✅ 已修复 |
+| P0-3 | plan.md 测试统计数据矛盾（125 vs 159） | plan.md 多处 | 待修复 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | ts_qi/ks_qi/DllGetClassObject null 检查（子代理已修复） | text_service.rs, dll.rs | ✅ 已修复 |
+| P1-2 | config.toml smooth 字段类型不匹配 | config.toml:37 | 待修复 |
+| P1-3 | plan.md "终审"结论逻辑矛盾 | plan.md 多处 | 待清理 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | plan.md 修复统计表重复出现 | plan.md:72-87,183-190,235-242 |
+| P2-2 | config.toml 缺少安装路径说明 | config.toml:1-8 |
+| P2-3 | README 缺少故障排除/FAQ | README.md |
+| P2-4 | README 缺少 wbw-cli 用法示例 | README.md:15 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | plan.md 待办事项未勾选 | plan.md:603-608 |
+| P3-2 | plan.md emoji 图标混用 | plan.md 多处 |
+| P3-3 | README 依赖关系图缺少 crate | README.md:44-54 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | README 未提及 LICENSE 文件位置 | README.md:146 |
+| P4-2 | plan.md 缺少 Round 14-17 修复验证 | plan.md |
+
+### 修复计划
+
+#### P0 优先级
+- P0-3: 统一 plan.md 测试统计数据为 159
