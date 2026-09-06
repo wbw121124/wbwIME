@@ -890,3 +890,34 @@ wbw-types:    0 passed (纯类型)
 #### Medium 优先级
 - R7-03: 临时 SVG 文件清理
 - D7-03: 清理 plan.md 重复统计表
+
+---
+
+## Round 8 最终确认（2026-09-04）
+
+### 修复验证
+
+| Round | 修复项 | 状态 |
+|-------|--------|------|
+| 1 | COM catch_unwind | ✅ |
+| 2 | IPC 认证 | ✅ |
+| 3 | usize 转换 | ✅ |
+| 4 | 颜色解析 | ✅ |
+| 5 | 配置日志 | ✅ |
+| 6 | README 更新 | ✅ |
+| 7 | fbterm 字母键 | ✅ |
+| - | buffer 长度检查 | ✅ |
+| - | config smooth 类型 | ✅ |
+| - | dict_path 默认值统一 | ✅ |
+| - | native cursor 计算 | ✅ |
+| - | CStr 长度限制 | ✅ |
+| - | packed struct UB | ✅ |
+| - | cursor 截断 | ✅ |
+| - | 临时 SVG 清理 | ✅ |
+| - | 默认值统一 | ✅ |
+
+### 审查结论
+
+**无 Critical/High 问题，代码可以发布。**
+
+所有 COM 接口均有 panic 防护；IPC 帧协议有 1MB 上限；整数转换有边界守卫；缓冲区长度在各路径均有限制；颜色解析有容错；SmoothMethod 类型系统正确；字典路径默认值统一。
