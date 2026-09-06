@@ -921,3 +921,62 @@ wbw-types:    0 passed (纯类型)
 **无 Critical/High 问题，代码可以发布。**
 
 所有 COM 接口均有 panic 防护；IPC 帧协议有 1MB 上限；整数转换有边界守卫；缓冲区长度在各路径均有限制；颜色解析有容错；SmoothMethod 类型系统正确；字典路径默认值统一。
+
+---
+
+## Round 9 官方文档对照审查（2026-09-04）
+
+### P0 — Critical
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P0-1 | ITfKeystrokeMgr vtable 槽位偏移：advise_key_sink 用了 slot[4]，实际应为 slot[3] | text_service.rs:124-138 |
+| P0-2 | unsafe impl Send/Sync 缺少 Safety 文档 | text_service.rs:35-36,197,294 |
+| P0-3 | 30+ 处 transmute COM vtable 缺少命名常量 | output.rs, text_service.rs |
+| P0-4 | Box::from_raw 引用计数无下溢保护 | text_service.rs:372, dll.rs:94 |
+
+### P1 — High
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P1-1 | DllGetClassObject 忽略 _riid 参数 | dll.rs:180-206 |
+| P1-2 | 5 个独立错误类型枚举未统一 | 多个 crate |
+| P1-3 | #[allow(dead_code)] 在错误类型上 | weight.rs, fst_dict.rs |
+| P1-4 | Mutex lock 在热路径使用 unwrap | hook.rs:113,129,138 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | CreateInstance 未拒绝聚合请求 | dll.rs:108-143 |
+| P2-2 | EditSession QI 未响应 IID_ITfEditSession | output.rs:99-121 |
+| P2-3 | 未使用的公共类型 RankStrategy/RankResult | ranker.rs:132-146 |
+| P2-4 | unsafe fn 内部重复 unsafe 块 | output.rs, hook.rs |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | Clippy 抑制 missing_const_for_thread_local | output.rs:1 |
+| P3-2 | 虚拟键码使用魔法数字 | state.rs:157-223 |
+| P3-3 | Ordering 使用不一致（SeqCst vs Acquire/Release） | 多处 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | ErrorRecovery/ErrorContext/RecoveryStrategy 未使用 | error.rs:57-157 |
+| P4-2 | RankResult/RankStrategy 未使用 | ranker.rs:132-146 |
+
+### 修复计划
+
+#### P0 优先级
+- P0-1: ITfKeystrokeMgr vtable 槽位修正（slot[3]=AdviseKeyEventSink, slot[4]=UnadviseKeyEventSink）
+- P0-2: 添加 Safety 文档到 unsafe impl Send/Sync
+
+#### P1 优先级
+- P1-1: DllGetClassObject 处理 _riid 参数
+
+#### P2 优先级
+- P2-1: CreateInstance 拒绝聚合
+- P2-2: EditSession QI 响应 IID_ITfEditSession
