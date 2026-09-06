@@ -1824,3 +1824,50 @@ wbw-types:    0 passed (纯类型)
 | P4-1 | README 缺少开发环境搭建说明 | README.md |
 | P4-2 | plan.md 缺少 Round 14-17 修复摘要 | plan.md |
 | P4-3 | config.toml smooth_method 注释可更详细 | config.toml:38 |
+
+---
+
+## Round 28 P0-P4 全级别审查（2026-09-06）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | 无新发现 P0 问题 | - | ✅ |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | HOOK_THREAD_ID 仍是 Mutex 未改为 AtomicBool | hook.rs:90 | ❌ 未修复 |
+| P1-2 | hook_paste GlobalAlloc 内存泄漏未添加 GlobalFree | main.rs:397-406 | ❌ 未修复 |
+| P1-3 | ts_activate thread_mgr 泄漏风险 | text_service.rs:517-523 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | plan.md 文档结构严重膨胀（1826行） | plan.md |
+| P2-2 | README smooth_method 配置缺少可选值说明 | README.md:97 |
+| P2-3 | README 依赖关系图缺少 wbw-ime-fbterm | README.md:44-54 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | README 缺少故障排除/FAQ | README.md |
+| P3-2 | README 缺少 wbw-cli 用法示例 | README.md:15 |
+| P3-3 | config.toml 缺少安装后路径说明 | config.toml:1-8 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | config.toml smooth_method 注释可更详细 | config.toml:38 |
+| P4-2 | README 未提及 LICENSE 文件位置 | README.md:146 |
+
+### 修复计划
+
+#### P1 优先级
+- P1-1: HOOK_THREAD_ID 改为 AtomicBool
+- P1-2: hook_paste 添加 GlobalFree
