@@ -1683,3 +1683,58 @@ wbw-types:    0 passed (纯类型)
 #### P0 优先级
 - P0-3: SetClipboardData 失败时 GlobalFree(h_mem)
 - P0-1: 改用 fetch_sub + 检查返回值替代 CAS loop
+
+---
+
+## Round 25 P0-P4 全级别审查（2026-09-06）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | 无新发现 P0 问题 | - | ✅ |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | cf_release 使用 fetch_sub 无 CAS 循环（与 ks/ts_release 不一致） | dll.rs:100 | 待修复 |
+| P1-2 | ts_add_ref panic 时返回 0 违反 COM 规范 | text_service.rs:403-408 | 待修复 |
+| P1-3 | hook.rs ll_keyboard_proc 回调中持有 Mutex 锁 | hook.rs:129,138,156,167 | 待修复 |
+| P1-4 | hook_paste 中 GlobalAlloc 内存泄漏 | main.rs:397-406 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | plan.md 文档自身矛盾冗余 | plan.md 全文 |
+| P2-2 | plan.md wbw-matcher test count 过时（36 vs 实际 38） | plan.md:196 |
+| P2-3 | clipboard_paste/hook_paste 代码重复 | output.rs, main.rs |
+| P2-4 | 硬编码 Ctrl+V 键码 | output.rs:500-503 |
+| P2-5 | 注册表操作缺乏 RAII 保护 | dll.rs:397-446 |
+| P2-6 | sort_by_score 使用 partial_cmp NaN 归为 Equal | candidate.rs:240-244 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | CandidateConverter 标注 #[allow(dead_code)] | candidate.rs:249 |
+| P3-2 | smooth.rs Interpolation/GoodTuring 注释缺失 | smooth.rs:97-106 |
+| P3-3 | L0StatsCollector 标注 dead_code | l0_learn.rs:287 |
+| P3-4 | plan.md 多处待办事项勾选不一致 | plan.md 多处 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | 未实现 ITfCompositionSink / ITfThreadMgrEventSink | text_service.rs |
+| P4-2 | clipboard_paste 硬编码 scan code 可提取为常量 | output.rs:452-457 |
+| P4-3 | fuzzy_lookup 全表扫描 O(n) 性能 | fst_dict.rs:202 |
+
+### 修复计划
+
+#### P1 优先级
+- P1-1: cf_release 改为 fetch_sub + prev<=0 检查
+- P1-2: ts_add_ref panic 返回 1
+- P1-3: EATEN_DOWN 改为 AtomicBool
+- P1-4: hook_paste 添加 GlobalFree
