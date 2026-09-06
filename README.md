@@ -94,6 +94,7 @@ snapshot_path = "wbw_l0.json"   # 学习快照路径
 [ngram]
 order = 3                        # N-gram 阶数（2=bigram, 3=trigram）
 smooth = 0.1  # 平滑参数 (f64)
+smooth_method = "laplace"
 model_path = "resources/dicts/ngram.bin"  # N-gram 模型文件
 ```
 
