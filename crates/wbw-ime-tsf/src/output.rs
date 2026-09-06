@@ -80,9 +80,19 @@ unsafe fn qi(obj: *mut c_void, iid: &Guid) -> Option<*mut c_void> {
 /// `TF_SELECTION` —— `ITfContext::GetSelection` 的输出结构。
 /// 这里只关心 range 指针（首个字段），其余由调用方保留。
 #[repr(C)]
+struct TfEditingZone {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+#[repr(C)]
 struct TSF_SELECTION {
     range: *mut c_void,
-    style: u64,
+    style: u32,
+    cran: TfEditingZone,
+    f_inline: i32,
 }
 
 const TF_DEFAULT_SELECTION: u32 = u32::MAX;
@@ -174,8 +184,12 @@ unsafe fn es_do_caret(context: *mut c_void, ec: u32) {
             *mut u32,
         ) -> HRESULT = std::mem::transmute(*ctx_vtable.add(5));
 
-        let mut selection: TSF_SELECTION =
-            TSF_SELECTION { range: std::ptr::null_mut(), style: 0 };
+        let mut selection: TSF_SELECTION = TSF_SELECTION {
+            range: std::ptr::null_mut(),
+            style: 0,
+            cran: TfEditingZone { left: 0, top: 0, right: 0, bottom: 0 },
+            f_inline: 0,
+        };
         let mut fetched: u32 = 0;
         let hr = get_sel_fn(
             context,

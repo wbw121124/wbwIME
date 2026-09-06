@@ -142,6 +142,13 @@ cargo clippy
 3. 注册 DLL：`regsvr32 wbw_ime_tsf.dll`（需管理员权限）
 4. 在 Windows 设置 → 时间和语言 → 语言 → 添加输入法 → 选择 wbwIME
 
+### 安装路径
+
+安装后文件位置：
+- 配置文件：`%LOCALAPPDATA%\wbwIME\config.toml`
+- 字典文件：`%LOCALAPPDATA%\wbwIME\dicts\`
+- 日志文件：`%LOCALAPPDATA%\wbwIME\wbw-ime.log`
+
 ## 许可证
 
 MPL-2.0

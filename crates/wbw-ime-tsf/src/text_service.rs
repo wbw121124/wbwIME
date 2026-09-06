@@ -279,7 +279,7 @@ unsafe extern "system" fn ks_release(this: *mut c_void) -> ULONG {
             }
         }
     }))
-    .unwrap_or(1)  // COM 规范要求 Release 返回 >= 0，返回 1 表示对象仍存活
+    .unwrap_or(0)  // panic 时返回 0，表示对象已释放（static 对象不会真正 UAF）
 }
 
 // ========== TextService COM ==========
@@ -426,7 +426,10 @@ unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
             }
         }
     }))
-    .unwrap_or(1)  // COM 规范要求 Release 返回 >= 0，返回 1 表示对象仍存活
+    .unwrap_or_else(|_| {
+        TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
+        0
+    })  // panic 时仍递减计数，确保 DLL 可以卸载
 }
 
 // ========== ITfTextInputProcessorEx ==========
