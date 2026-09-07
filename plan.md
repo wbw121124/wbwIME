@@ -2412,3 +2412,49 @@ wbw-types:    0 passed (纯类型)
 |---|------|------|
 | P4-1 | 建议将 plan.md 拆分为最终清单+历史日志 | plan.md |
 | P4-2 | README 可添加已知限制章节 | README.md |
+
+---
+
+## Round 41 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | EditSession thread-local 状态传递竞争 | output.rs:104-109 | 待修复 |
+| P0-2 | ts_activate 中 &mut 引用别名 UB | text_service.rs:474-506 | 待修复 |
+| P0-3 | KeyEventSink AddRef 返回固定值 1 | text_service.rs:257-261 | 待修复 |
+| P0-4 | ClassFactory AddRef 返回固定值 1 | dll.rs:362-419 | 待修复 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | clipboard_paste SendInput 在锁外执行 | output.rs:483-487 | 待修复 |
+| P1-2 | ks_add_ref 无 prev<=0 守卫 | text_service.rs:257-263 | 待修复 |
+| P1-3 | ts_release panic 路径双重递减 | text_service.rs:441-444 | 待修复 |
+| P1-4 | goto_page 不重置 selected 索引 | candidate.rs:98-107 | 待修复 |
+| P1-5 | prev_page 错误设置 has_next | candidate.rs:88-95 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | HRESULT 类型和常量重复定义 | output.rs |
+| P2-2 | COM vtable 常量在多处重复定义 | text_service.rs, output.rs |
+| P2-3 | DictConfig 可选字段无 serde(default) | lib.rs:262-269 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | 乱码注释（编码问题） | dll.rs:314, text_service.rs:458 |
+| P3-2 | 全局 allow(dead_code) 过宽 | lib.rs:1 |
+| P3-3 | CLASS_E_NOAGREGATION 拼写错误 | dll.rs:18 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | clipboard_paste/hook_paste 代码重复 | output.rs, main.rs |
+| P4-2 | ks_test_key_down 与 ks_key_down 重复逻辑 | text_service.rs:650-732 |
