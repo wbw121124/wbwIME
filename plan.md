@@ -1919,3 +1919,57 @@ wbw-types:    0 passed (纯类型)
 #### P0 优先级
 - P0-1: 将 NgramConfig.smooth_method 从 String 改为 SmoothMethod enum
 - P0-2: 修正 plan.md Round 28 P1-1 结论
+
+---
+
+## Round 30 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | plan.md 文档结构严重混乱 | plan.md 全文 | 待精简 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | ks_test_key_up/ks_key_up/ks_preserved_key 未检查 pf_eaten null | text_service.rs, output.rs | 待修复 |
+| P1-2 | ts_activate 失败路径 thread_mgr 引用计数泄漏 | text_service.rs:544-555 | 待修复 |
+| P1-3 | hook_paste SetClipboardData 失败路径未释放 h_mem | main.rs:406 | 待修复 |
+| P1-4 | candidate.rs sort_by_score 使用 partial_cmp 而非 total_cmp | candidate.rs:240-244 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | plan.md 文档膨胀（1340+行） | plan.md |
+| P2-2 | config.toml smooth_method 注释列出未实现的选项 | config.toml:38 |
+| P2-3 | README 缺少故障排除段落 | README.md |
+| P2-4 | clipboard_paste/hook_paste 代码重复 | output.rs, main.rs |
+| P2-5 | GUI 启动后 LAUNCHED 永久锁死 | ipc.rs |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | README 依赖关系图缺少 wbw-ime-fbterm | README.md:44-54 |
+| P3-2 | README 缺少 CLI 用法示例 | README.md |
+| P3-3 | README 缺少开发环境要求 | README.md |
+| P3-4 | COM vtable 缺少布局断言 | text_service.rs, output.rs |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | 考虑使用 windows crate 替代裸 vtable 调用 | 多处 |
+| P4-2 | FRAME 帧协议缺少版本号 | wbw-ime-ipc/src/lib.rs |
+| P4-3 | hook_paste 缺少 EmptyClipboard 调用 | main.rs:395 |
+
+### 修复计划
+
+#### P1 优先级
+- P1-1: ks_test_key_up/ks_key_up/ks_preserved_key 添加 pf_eaten null 检查
+- P1-2: ts_activate 失败路径释放 punk 的 AddRef
+- P1-3: hook_paste SetClipboardData 失败时 GlobalFree
+- P1-4: sort_by_score 改用 total_cmp
