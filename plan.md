@@ -1839,7 +1839,7 @@ wbw-types:    0 passed (纯类型)
 
 | # | 问题 | 位置 | 状态 |
 |---|------|------|------|
-| P1-1 | HOOK_THREAD_ID 仍是 Mutex 未改为 AtomicBool | hook.rs:90 | ❌ 未修复 |
+| P1-1 | HOOK_THREAD_ID 仍是 Mutex 未改为 AtomicBool | hook.rs:90 | ✅ 已修复 |
 | P1-2 | hook_paste GlobalAlloc 内存泄漏未添加 GlobalFree | main.rs:397-406 | ❌ 未修复 |
 | P1-3 | ts_activate thread_mgr 泄漏风险 | text_service.rs:517-523 | 待修复 |
 

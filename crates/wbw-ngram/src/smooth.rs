@@ -3,31 +3,7 @@
 //! 提供多种平滑方法的实现。
 
 /// 平滑方法
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SmoothMethod {
-    /// 加一平滑（拉普拉斯平滑）
-    Laplace,
-    /// 加k平滑
-    AddK,
-    /// Good-Turing 平滑
-    GoodTuring,
-    /// 插值平滑
-    Interpolation,
-    /// 回退平滑
-    Backoff,
-}
-
-impl std::fmt::Display for SmoothMethod {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SmoothMethod::Laplace => write!(f, "拉普拉斯平滑"),
-            SmoothMethod::AddK => write!(f, "加k平滑"),
-            SmoothMethod::GoodTuring => write!(f, "Good-Turing平滑"),
-            SmoothMethod::Interpolation => write!(f, "插值平滑"),
-            SmoothMethod::Backoff => write!(f, "回退平滑"),
-        }
-    }
-}
+pub use wbw_types::SmoothMethod;
 
 /// 平滑配置
 #[derive(Debug, Clone)]

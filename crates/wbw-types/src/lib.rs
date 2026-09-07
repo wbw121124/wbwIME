@@ -204,6 +204,34 @@ impl Default for RankConfig {
     }
 }
 
+/// 平滑方法
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SmoothMethod {
+    /// 加一平滑（拉普拉斯平滑）
+    #[default]
+    Laplace,
+    /// 加k平滑
+    AddK,
+    /// Good-Turing 平滑
+    GoodTuring,
+    /// 插值平滑
+    Interpolation,
+    /// 回退平滑
+    Backoff,
+}
+
+impl fmt::Display for SmoothMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SmoothMethod::Laplace => write!(f, "laplace"),
+            SmoothMethod::AddK => write!(f, "add_k"),
+            SmoothMethod::GoodTuring => write!(f, "good_turing"),
+            SmoothMethod::Interpolation => write!(f, "interpolation"),
+            SmoothMethod::Backoff => write!(f, "backoff"),
+        }
+    }
+}
+
 /// N-gram 配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NgramConfig {
@@ -214,12 +242,8 @@ pub struct NgramConfig {
     /// 模型文件路径
     pub model_path: Option<String>,
     /// 平滑方法
-    #[serde(default = "default_smooth_method")]
-    pub smooth_method: String,
-}
-
-fn default_smooth_method() -> String {
-    "laplace".to_string()
+    #[serde(default)]
+    pub smooth_method: SmoothMethod,
 }
 
 impl Default for NgramConfig {
@@ -228,7 +252,7 @@ impl Default for NgramConfig {
             order: 3,
             smooth: 0.1,
             model_path: None,
-            smooth_method: default_smooth_method(),
+            smooth_method: SmoothMethod::default(),
         }
     }
 }
