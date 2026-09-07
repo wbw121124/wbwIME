@@ -2062,3 +2062,45 @@ wbw-types:    0 passed (纯类型)
 |---|------|------|
 | P4-1 | 手动 vtable transmute 可抽象为宏 | text_service.rs:466-499 |
 | P4-2 | get_dll_path 可缓存结果 | dll.rs:377-408 |
+
+---
+
+## Round 33 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | ts_activate 中 QI 获取的 thread_mgr 释放路径不一致 | text_service.rs:474-536 | 待修复 |
+| P0-2 | ks_add_ref 在 prev<=0 时仍执行 fetch_add（UAF） | text_service.rs:257-263 | 待修复 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | ts_release panic 路径 TEXT_SERVICE_COUNT 不一致 | text_service.rs:414-446 | 待修复 |
+| P1-2 | tsf_insert_text TOCTOU 竞态 | output.rs:525-549 | 待修复 |
+| P1-3 | ensure_connected 在按键热路径中阻塞 | ipc.rs:56-112 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | unwrap_or_else into_inner 绕过 poisoned Mutex | 全局 30+ 处 |
+| P2-2 | clipboard_paste sleep(150ms) 不可靠 | output.rs:487 |
+| P2-3 | IPC 无认证/加密 | ipc/src/lib.rs |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | 全局 allow(dead_code) 过宽 | lib.rs:1 |
+| P3-2 | 中英文混杂注释/乱码 | text_service.rs, dll.rs |
+| P3-3 | TfEditingZone 命名不当 | output.rs:83-88 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | CandidateFilter deduplicate 使用 HashSet 不稳定排序 | candidate.rs:227-230 |
+| P4-2 | criterion 依赖位置不当 | Cargo.toml:33 |
