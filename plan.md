@@ -1973,3 +1973,47 @@ wbw-types:    0 passed (纯类型)
 - P1-2: ts_activate 失败路径释放 punk 的 AddRef
 - P1-3: hook_paste SetClipboardData 失败时 GlobalFree
 - P1-4: sort_by_score 改用 total_cmp
+
+---
+
+## Round 31 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical（0 项）
+
+代码审查未发现新的 P0 问题。
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | config.toml smooth_method 注释列出未实现的 kneser_ney | config.toml:38 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | plan.md 文档结构严重混乱 | plan.md 全文 |
+| P2-2 | README smooth_method 配置示例缺少可选值说明 | README.md:97 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | README 依赖关系图缺少 5 个 crate | README.md:44-54 |
+| P3-2 | README 缺少故障排除/FAQ | README.md |
+| P3-3 | README 缺少 CLI 用法示例 | README.md:15 |
+| P3-4 | README 未提及 LICENSE 文件位置 | README.md:146 |
+| P3-5 | config.toml 缺少安装后路径说明 | config.toml:1-8 |
+| P3-6 | plan.md 有 2 个未勾选的待办事项 | plan.md:279,308 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | plan.md emoji 图标混用 | plan.md 多处 |
+| P4-2 | plan.md 缺少 Round 14-17 修复摘要 | plan.md |
+
+### 修复计划
+
+#### P1 优先级
+- P1-1: 修正 config.toml smooth_method 注释（移除 kneser_ney）
