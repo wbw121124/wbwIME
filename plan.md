@@ -2370,3 +2370,45 @@ wbw-types:    0 passed (纯类型)
 |---|------|------|
 | P4-1 | COM vtable 缺少布局断言 | text_service.rs, output.rs |
 | P4-2 | smooth_method 注释可更详细 | config.toml:38 |
+
+---
+
+## Round 40 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | plan.md 包含多个互相矛盾的"终审"章节 | plan.md 全文 | 待精简 |
+| P0-2 | plan.md 修改记录滞后未覆盖 Round 6-17 | plan.md:72-86 | 待补全 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | SetClipboardData 使用 CF_TEXT(=1) 而非 CF_UNICODETEXT(=13) | output.rs:476 | 待修复 |
+| P1-2 | clipboard_paste SendInput 在锁外执行 | output.rs:483-516 | 待修复 |
+| P1-3 | ks_add_ref 无 prev<=0 守卫 | text_service.rs:257-263 | 待修复 |
+| P1-4 | ts_release panic 路径双重递减 TEXT_SERVICE_COUNT | text_service.rs:441-444 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | plan.md 结构混乱不符合文档规范 | plan.md 全文 |
+| P2-2 | plan.md 包含内部工作流信息 | plan.md:657-668 |
+| P2-3 | README 依赖关系图缺少 5 个 crate | README.md:44-54 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | README 缺少故障排除/FAQ | README.md |
+| P3-2 | README 缺少 CLI 用法示例 | README.md |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | 建议将 plan.md 拆分为最终清单+历史日志 | plan.md |
+| P4-2 | README 可添加已知限制章节 | README.md |
