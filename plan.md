@@ -2017,3 +2017,48 @@ wbw-types:    0 passed (纯类型)
 
 #### P1 优先级
 - P1-1: 修正 config.toml smooth_method 注释（移除 kneser_ney）
+
+---
+
+## Round 32 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | copy_nonoverlapping 未检查 wide.len() 上界 | output.rs:471 | 待修复 |
+| P0-2 | clipboard_paste SendInput 在锁外执行 | output.rs:484,508-512 | 待修复 |
+| P0-3 | 硬编码 loopback port 可被本地进程冒充 | ipc.rs:18,78-84 | 待修复 |
+| P0-4 | ts_release 双重递减 TEXT_SERVICE_COUNT | text_service.rs:435-438 | 待修复 |
+| P0-5 | GetModuleFileNameW 截断时 from_utf16_lossy | dll.rs:383-407 | 待修复 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | degraded mode 泄漏 thread_mgr | text_service.rs:517-522 | 待修复 |
+| P1-2 | state.rs cursor 字节偏移与字符偏移混淆 | state.rs:73-74 | 待修复 |
+| P1-3 | tsf_insert_text 检查与使用间竞态 | output.rs:530-531 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | ts_add_ref/ts_release catch_unwind 返回哑值 | text_service.rs:406-411,414-438 |
+| P2-2 | es_add_ref/es_release 是 stub | output.rs:142-148 |
+| P2-3 | get_dll_path 使用 from_utf16_lossy | dll.rs:406 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | VTABLE_QI 常量未使用 | text_service.rs:13-16 |
+| P3-2 | lp_vtbl 残留 emoji 注释 | dll.rs:53 |
+| P3-3 | TfEditingZone 字段名 cran 可疑 | output.rs:83-88 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | 手动 vtable transmute 可抽象为宏 | text_service.rs:466-499 |
+| P4-2 | get_dll_path 可缓存结果 | dll.rs:377-408 |
