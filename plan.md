@@ -2280,3 +2280,47 @@ wbw-types:    0 passed (纯类型)
 |---|------|------|
 | P4-1 | Matcher 缓存键不包含 fuzzy_enabled | matcher.rs:156-160 |
 | P4-2 | 日志文件无轮转/清理机制 | log.rs |
+
+---
+
+## Round 38 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | cf_qi 未检查 riid null | dll.rs:68 | 待修复 |
+| P0-2 | TsfContext Send/Sync 不安全 | text_service.rs:41-47 | 待修复 |
+| P0-3 | thread-local 状态传递竞争 | output.rs:104-109 | 待修复 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | clipboard_paste sleep 同步不可靠 | output.rs:487 | 待修复 |
+| P1-2 | 硬编码 Ctrl+V 国际键盘不兼容 | output.rs:505-510 | 待修复 |
+| P1-3 | CLSID 硬编码与常量不同步 | dll.rs:263 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | cf_add_ref panic 返回 0 | dll.rs:89-95 |
+| P2-2 | ts_release panic 时错误递减计数 | text_service.rs:440-444 |
+| P2-3 | clipboard_paste 硬编码 Ctrl+V | output.rs:505-510 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | lib.rs 全局 allow(dead_code) 过宽 | lib.rs:1 |
+| P3-2 | TfEditingZone 命名与 TSF 规范不一致 | output.rs:83-88 |
+| P3-3 | text_service.rs 乱码注释 | text_service.rs:458-472 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | 手动 vtable 应使用 windows-sys | 多处 |
+| P4-2 | GlobalAlloc 可替换为 HeapAlloc | output.rs:449-481 |
+| P4-3 | IPC 无认证/加密 | ipc/src/lib.rs |
