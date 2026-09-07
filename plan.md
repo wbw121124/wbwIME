@@ -2324,3 +2324,49 @@ wbw-types:    0 passed (纯类型)
 | P4-1 | 手动 vtable 应使用 windows-sys | 多处 |
 | P4-2 | GlobalAlloc 可替换为 HeapAlloc | output.rs:449-481 |
 | P4-3 | IPC 无认证/加密 | ipc/src/lib.rs |
+
+---
+
+## Round 39 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | SetClipboardData 使用 CF_TEXT(=1) 而非 CF_UNICODETEXT(=13) | output.rs:476 | 待修复 |
+| P0-2 | plan.md 测试统计数据事实错误（声称 159 实际 143） | plan.md:194-205 | 待修正 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | clipboard_paste SendInput 在锁外执行（竞态） | output.rs:483-516 | 待修复 |
+| P1-2 | hook_paste 未检查 EmptyClipboard 返回值 | main.rs:395 | 待修复 |
+| P1-3 | ks_add_ref 无 prev<=0 守卫 | text_service.rs:257-263 | 待修复 |
+| P1-4 | ts_release panic 路径双重递减 TEXT_SERVICE_COUNT | text_service.rs:441-444 | 待修复 |
+| P1-5 | smooth_method 注释列出未实现的 kneser_ney | config.toml:38 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | cf_release 使用 fetch_sub 无 CAS 循环 | dll.rs:100 |
+| P2-2 | README smooth_method 缺少可选值说明 | README.md:96-98 |
+| P2-3 | README 依赖关系图缺少 5 个 crate | README.md:44-54 |
+| P2-4 | get_caret_screen_coords 每次堆分配 EditSession | output.rs:349 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | README 缺少故障排除/FAQ | README.md |
+| P3-2 | README 缺少 CLI 用法示例 | README.md |
+| P3-3 | README 未提及 LICENSE 文件位置 | README.md:145-147 |
+| P3-4 | config.toml 缺少安装后路径说明 | config.toml:1-8 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | COM vtable 缺少布局断言 | text_service.rs, output.rs |
+| P4-2 | smooth_method 注释可更详细 | config.toml:38 |
