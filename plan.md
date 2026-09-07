@@ -2152,3 +2152,46 @@ wbw-types:    0 passed (纯类型)
 | P4-1 | GUI 无优雅关闭机制 | main.rs |
 | P4-2 | clipboard_paste 固定 150ms sleep | output.rs, main.rs |
 | P4-3 | TEXT_SERVICE_COUNT 是 pub 但仅内部使用 | text_service.rs:68 |
+
+---
+
+## Round 35 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical（代码 0 项，文档 2 项）
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | plan.md 测试统计数据过时（声称 159 实际 128） | plan.md:194-205 | 待修正 |
+| P0-2 | Round 30-34 多项 P0 修复记录未确认落地 | plan.md 多处 | 待确认 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | EditSession AddRef/Release 语义错误 | output.rs:142-147 | 待修复 |
+| P1-2 | clipboard_paste 锁提前释放导致粘贴丢失 | output.rs:483 | 待修复 |
+| P1-3 | ensure_state_loaded poisoned Mutex 静默失败 | text_service.rs:84 | 待修复 |
+| P1-4 | ks_add_ref prev<=0 时仍执行 fetch_add | text_service.rs:257-263 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | ks_test_key_down 热路径重复获取锁 | text_service.rs:679-691 |
+| P2-2 | EditSession thread_local 状态不安全 | output.rs:331-360 |
+| P2-3 | clipboard_paste 5MB 限制检查不准确 | output.rs:444 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | dll.rs GBK 乱码注释 | dll.rs:314,318-322 |
+| P3-2 | HRESULT 使用魔术数字 | text_service.rs 多处 |
+| P3-3 | KeyEventSink 注释与实际不符 | text_service.rs:206 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | E_NOTIMPL 已定义未使用 | dll.rs:13 |
+| P4-2 | process_key Enter 键只提交第一个候选 | state.rs:158-164 |
