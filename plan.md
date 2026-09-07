@@ -2104,3 +2104,51 @@ wbw-types:    0 passed (纯类型)
 |---|------|------|
 | P4-1 | CandidateFilter deduplicate 使用 HashSet 不稳定排序 | candidate.rs:227-230 |
 | P4-2 | criterion 依赖位置不当 | Cargo.toml:33 |
+
+---
+
+## Round 34 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | KeyEventSink ref_count 下溢（COM 违规） | text_service.rs:265-286 | 待修复 |
+| P0-2 | TextService::ref_count 是 pub | text_service.rs:327 | 待修复 |
+| P0-3 | clipboard_paste SendInput 在锁外执行 | output.rs:483-516 | 待修复 |
+| P0-4 | hook_paste 缺少 EmptyClipboard 返回值检查 | main.rs:395 | 待修复 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | ensure_state_loaded 双重检查锁竞态 | text_service.rs:76-124 | 待修复 |
+| P1-2 | tsf_insert_text 使用 stale thread_mgr | text_service.rs:836-843 | 待修复 |
+| P1-3 | clipboard_paste SetClipboardData 失败后剪贴板清空 | output.rs:476-480 | 待修复 |
+| P1-4 | es_qi 未处理 null riid | output.rs:126 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | clipboard_paste/hook_paste 代码重复 | output.rs, main.rs |
+| P2-2 | IPC 无认证/加密 | ipc/src/lib.rs |
+| P2-3 | process_key 吞没 poisoned Mutex | text_service.rs 多处 |
+| P2-4 | EditSession 不必要堆分配 | output.rs:346-363 |
+| P2-5 | 硬编码 IPC 端口无 SO_REUSEADDR | ipc/src/lib.rs:16 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | 不一致的 null-check 风格 | 多处 |
+| P3-2 | 死代码/注释代码 | state.rs:213-214 |
+| P3-3 | HOOK_THREAD_ID 写入但未读取 | hook.rs:90 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | GUI 无优雅关闭机制 | main.rs |
+| P4-2 | clipboard_paste 固定 150ms sleep | output.rs, main.rs |
+| P4-3 | TEXT_SERVICE_COUNT 是 pub 但仅内部使用 | text_service.rs:68 |
