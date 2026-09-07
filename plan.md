@@ -2458,3 +2458,48 @@ wbw-types:    0 passed (纯类型)
 |---|------|------|
 | P4-1 | clipboard_paste/hook_paste 代码重复 | output.rs, main.rs |
 | P4-2 | ks_test_key_down 与 ks_key_down 重复逻辑 | text_service.rs:650-732 |
+
+---
+
+## Round 42 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | SetClipboardData 使用 CF_TEXT(=1) 而非 CF_UNICODETEXT(=13) | output.rs:476 | 待修复 |
+| P0-2 | clipboard_paste TOCTOU 裸指针竞态 | output.rs, text_service.rs:837 | 待修复 |
+| P0-3 | clipboard_paste 锁在 SendInput 前释放（竞态） | output.rs:483 | 待修复 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | 乱码注释（GBK 编码问题） | dll.rs:314-322 | 待修复 |
+| P1-2 | fallback_coords 检测逻辑永不触发 | output.rs:274-283 | 待修复 |
+| P1-3 | hook_paste 持锁 150ms 阻塞 UI | main.rs:381-436 | 待修复 |
+| P1-4 | candidate_window.rs render 使用 println! | candidate_window.rs | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | HRESULT 常量重复定义 | dll.rs, text_service.rs |
+| P2-2 | VTABLE_QI/VTABLE_RELEASE 未使用 | output.rs:12-13 |
+| P2-3 | DictConfig 可选字段无 serde(default) | lib.rs:262-269 |
+| P2-4 | smooth_method 注释列出 kneser_ney | config.toml:38 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | unsafe 函数缺少 Safety 文档 | 多处 |
+| P3-2 | Mutex poisoning 恢复不一致 | 多处 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | fuzzy_lookup O(n) 全表扫描 | fst_dict.rs |
+| P4-2 | snapshot() 每次克隆候选列表 | engine.rs |
+| P4-3 | WbwIme 在两个 crate 中重复实现 | native, gui |
