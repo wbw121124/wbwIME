@@ -2195,3 +2195,45 @@ wbw-types:    0 passed (纯类型)
 |---|------|------|
 | P4-1 | E_NOTIMPL 已定义未使用 | dll.rs:13 |
 | P4-2 | process_key Enter 键只提交第一个候选 | state.rs:158-164 |
+
+---
+
+## Round 36 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | TEXT_SERVICE_COUNT 下溢 UAF | text_service.rs | 待修复 |
+| P0-2 | EditSession 假引用计数 | output.rs:142-147 | 待修复 |
+| P0-3 | IPC 无认证/加密 | ipc/src/lib.rs | 待修复 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | clipboard_paste 锁提前释放 | output.rs:483 | 待修复 |
+| P1-2 | ks_add_ref prev<=0 仍 fetch_add | text_service.rs:257-263 | 待修复 |
+| P1-3 | hook Relax 排序 | hook.rs:112-115 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | FstDict 读取整个文件到内存 | fst_dict.rs:65 |
+| P2-2 | edit_distance O(mn) 无 SIMD | fst_dict.rs:400-428 |
+| P2-3 | NgramTable 高频路径重复分配 | table.rs:63-92 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | logf! 宏急切求值 | gui/src/log.rs:36-39 |
+| P3-2 | HOOK_THREAD_ID Relaxed 排序 | hook.rs:112-115 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | FbTermInfoData 未使用 | fbterm/src/main.rs:46-70 |
+| P4-2 | DictBuilder deduplicate/sort 易遗漏 | builder.rs:143-158 |
