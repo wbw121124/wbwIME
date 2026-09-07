@@ -2237,3 +2237,46 @@ wbw-types:    0 passed (纯类型)
 |---|------|------|
 | P4-1 | FbTermInfoData 未使用 | fbterm/src/main.rs:46-70 |
 | P4-2 | DictBuilder deduplicate/sort 易遗漏 | builder.rs:143-158 |
+
+---
+
+## Round 37 P0-P4 全级别审查（2026-09-07）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | clipboard_paste 使用错误剪贴板格式常量（CF_TEXT=1 应为 CF_UNICODETEXT=13） | output.rs:476 | 待修复 |
+| P0-2 | IPC 读取线程直接调用 TSF COM 对象（线程安全违规） | ipc.rs:146-148 | 待修复 |
+| P0-3 | ts_release panic 路径 TEXT_SERVICE_COUNT 永久下溢 | text_service.rs:441-444 | 待修复 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | clipboard_paste 锁在 SendInput 前释放（竞态） | output.rs:483 | 待修复 |
+| P1-2 | ks_add_ref prev<=0 仍 fetch_add | text_service.rs:257-263 | 待修复 |
+| P1-3 | config.toml dict.ngram_path 被代码静默忽略 | config.toml:5 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | cf_qi 未检查 riid 是否为 null | dll.rs:59-87 |
+| P2-2 | 字典加载逻辑在 4 处重复 | 多处 |
+| P2-3 | get_caret_screen_coords 每次堆分配 EditSession | output.rs:349 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | 大量 #[allow(dead_code)] 全局抑制 | lib.rs:1 |
+| P3-2 | GUID data4 注释可能与 msctf.idl 不一致 | guid.rs |
+| P3-3 | dll.rs GBK 乱码注释 | dll.rs:314 |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | Matcher 缓存键不包含 fuzzy_enabled | matcher.rs:156-160 |
+| P4-2 | 日志文件无轮转/清理机制 | log.rs |
