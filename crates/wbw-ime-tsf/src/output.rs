@@ -441,6 +441,9 @@ pub fn clipboard_paste(text: &str) {
     let _guard = CLIPBOARD_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     unsafe {
         let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+        if wide.len() > 5 * 1024 * 1024 {
+            return;
+        }
         let size = wide.len() * 2;
 
         use windows_sys::Win32::System::DataExchange::{

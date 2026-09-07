@@ -412,16 +412,15 @@ pub(crate) unsafe extern "system" fn ts_add_ref(this: *mut c_void) -> ULONG {
 }
 
 unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let ts = unsafe { &*(this as *const TextService) };
         loop {
             let prev = ts.ref_count.load(Ordering::Acquire);
             if prev <= 0 {
-                return 0;
+                return 0u32;
             }
             if prev == 1 {
                 if ts.ref_count.compare_exchange(1, 0, Ordering::AcqRel, Ordering::Relaxed).is_ok() {
-                    TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
                     unsafe { drop(Box::from_raw(this as *mut TextService)); }
                     return 0;
                 }
@@ -431,11 +430,19 @@ unsafe extern "system" fn ts_release(this: *mut c_void) -> ULONG {
                 return (prev - 1) as ULONG;
             }
         }
-    }))
-    .unwrap_or_else(|_| {
-        TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
-        0
-    })
+    }));
+    match result {
+        Ok(r) => {
+            if r == 0 {
+                TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
+            }
+            r
+        }
+        Err(_) => {
+            TEXT_SERVICE_COUNT.fetch_sub(1, Ordering::AcqRel);
+            0
+        }
+    }
 }
 
 // ========== ITfTextInputProcessorEx ==========
