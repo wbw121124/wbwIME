@@ -1871,3 +1871,51 @@ wbw-types:    0 passed (纯类型)
 #### P1 优先级
 - P1-1: HOOK_THREAD_ID 改为 AtomicBool
 - P1-2: hook_paste 添加 GlobalFree
+
+---
+
+## Round 29 P0-P4 全级别审查（2026-09-06）
+
+### P0 — Critical
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P0-1 | config.toml smooth_method 是死配置（String 未解析为 enum） | config.toml:38 vs smooth.rs | 待修复 |
+| P0-2 | plan.md Round 28 P1-1 结论与代码事实相反 | plan.md:1842 | 待修正 |
+
+### P1 — High
+
+| # | 问题 | 位置 | 状态 |
+|---|------|------|------|
+| P1-1 | candidate.rs sort_by_score 使用 partial_cmp 而非 total_cmp | candidate.rs:240-244 | 待修复 |
+| P1-2 | hook_paste SetClipboardData 失败路径未释放 h_mem | main.rs:406 | 待修复 |
+| P1-3 | README smooth_method 配置示例缺少可选值说明 | README.md:97 | 待修复 |
+
+### P2 — Medium
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P2-1 | plan.md 统计数据过时（matcher 36 vs 实际 38） | plan.md:196 |
+| P2-2 | plan.md 结构严重膨胀且自相矛盾 | plan.md 全文 |
+| P2-3 | README 依赖关系图缺少 wbw-ime-fbterm | README.md:44-54 |
+
+### P3 — Low
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P3-1 | README 缺少故障排除/FAQ | README.md |
+| P3-2 | README 缺少 wbw-cli 用法示例 | README.md:15 |
+| P3-3 | plan.md Round 14-17 修复摘要缺失 | plan.md |
+
+### P4 — Informational
+
+| # | 问题 | 位置 |
+|---|------|------|
+| P4-1 | README 缺少开发环境搭建说明 | README.md |
+| P4-2 | config.toml 缺少安装后路径说明 | config.toml:1-8 |
+
+### 修复计划
+
+#### P0 优先级
+- P0-1: 将 NgramConfig.smooth_method 从 String 改为 SmoothMethod enum
+- P0-2: 修正 plan.md Round 28 P1-1 结论
