@@ -544,7 +544,12 @@ unsafe extern "system" fn ts_activate(this: *mut c_void, punk: *mut c_void, tid:
     if hr != S_OK {
         unsafe {
             *TSF_CTX.lock().unwrap_or_else(|e| e.into_inner()) = TsfContext::EMPTY;
-            if thread_mgr != punk {
+            if thread_mgr == punk {
+                // punk 被手动 AddRef 过，需要 Release
+                let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
+                    std::mem::transmute(*(*(punk as *const *const usize)).add(VTABLE_RELEASE));
+                release_fn(punk);
+            } else if !thread_mgr.is_null() {
                 let release_fn: unsafe extern "system" fn(*mut c_void) -> u32 =
                     std::mem::transmute(*(*(thread_mgr as *const *const usize)).add(VTABLE_RELEASE));
                 release_fn(thread_mgr);
@@ -726,6 +731,9 @@ unsafe extern "system" fn ks_test_key_up(
     _l: u32,
     pf_eaten: *mut i32,
 ) -> HRESULT {
+    if pf_eaten.is_null() {
+        return E_INVALIDARG;
+    }
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             *pf_eaten = 0;
@@ -845,6 +853,9 @@ unsafe extern "system" fn ks_key_up(
     _l: u32,
     pf_eaten: *mut i32,
 ) -> HRESULT {
+    if pf_eaten.is_null() {
+        return E_INVALIDARG;
+    }
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             *pf_eaten = 0;

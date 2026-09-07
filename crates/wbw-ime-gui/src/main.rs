@@ -403,7 +403,11 @@ fn hook_paste(text: &str) {
             } else {
                 std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr, wide.len());
                 GlobalUnlock(h_mem);
-                SetClipboardData(1, h_mem);
+                if SetClipboardData(1, h_mem).is_null() {
+                    GlobalFree(h_mem);
+                    CloseClipboard();
+                    return;
+                }
             }
         }
         CloseClipboard();
