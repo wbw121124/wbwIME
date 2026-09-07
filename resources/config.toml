@@ -35,6 +35,6 @@ snapshot_path = "wbw_l0.json"
 order = 3
 # 平滑算法
 smooth = 0.1
-smooth_method = "laplace"  # 可选值: laplace, good_turing, kneser_ney（当前仅 laplace 完整实现）
+smooth_method = "laplace"  # 可选值: laplace, add_k, good_turing, interpolation, backoff（当前仅 laplace/add_k 完整实现）
 # N-gram 模型文件
 model_path = "resources/dicts/ngram.bin"
